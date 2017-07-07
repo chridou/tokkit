@@ -1,6 +1,7 @@
 use std::fmt;
 
 pub mod errors;
+mod remote_server;
 
 use self::errors::*;
 pub use shared::*;
@@ -37,7 +38,7 @@ impl AuthenticatedUser {
     pub fn new(uid: Uid) -> Self {
         AuthenticatedUser {
             uid: uid,
-            scopes: Vec::new()
+            scopes: Vec::new(),
         }
     }
 
@@ -51,16 +52,17 @@ impl AuthenticatedUser {
         scopes.iter().all(|scope| self.has_scope(scope))
     }
 
-    /// Authorize the user for an action defined by the given scope. If the user does not have the scope this method will fail.
+    /// Authorize the user for an action defined by the given scope.
+    /// If the user does not have the scope this method will fail.
     pub fn authorize(&self, scope: &Scope) -> ::std::result::Result<(), NotAuthorized> {
         if self.has_scope(scope) {
             Ok(())
         } else {
-            Err(NotAuthorized(
-                format!("User with uid {} does not have the required scope {}.",
-                                 self.uid,
-                                 scope),
-            ))
+            Err(NotAuthorized(format!(
+                "User with uid {} does not have the required scope {}.",
+                self.uid,
+                scope
+            )))
         }
     }
 }
@@ -98,14 +100,16 @@ fn json_to_user(json: &str) -> Result<AuthenticatedUser> {
                 Uid::new(uid.as_ref())
             } else {
                 bail!(ErrorKind::InvalidResponseContent(
-                format!("Expected a string as the uid in {}", json)))
+                    format!("Expected a string as the uid in {}", json),
+                ))
             };
             unimplemented!()
-        },
-        Ok(invalid_value) => 
-            Err(ErrorKind::InvalidResponseContent(
-                format!("Expected an object but found {}", invalid_value)).into()),
-        Err(err) => 
-            Err(ErrorKind::InvalidResponseContent(format!("{}", err)).into()),
+        }
+        Ok(invalid_value) => Err(
+            ErrorKind::InvalidResponseContent(
+                format!("Expected an object but found {}", invalid_value),
+            ).into(),
+        ),
+        Err(err) => Err(ErrorKind::InvalidResponseContent(format!("{}", err)).into()),
     }
 }
