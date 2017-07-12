@@ -8,6 +8,12 @@ pub struct Token(pub String);
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Scope(pub String);
 
+impl Scope {
+    pub fn new<T: Into<String>>(scope: T) -> Scope {
+        Scope(scope.into())
+    }
+}
+
 impl fmt::Display for Scope {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)

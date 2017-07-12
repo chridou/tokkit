@@ -54,7 +54,7 @@ impl fmt::Display for UserId {
 }
 
 /// Once a user has been authenticated this struct can be used for authorization.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct TokenInfo {
     pub user_id: Option<UserId>,
     pub scopes: Vec<Scope>,
@@ -130,9 +130,9 @@ mod parsers {
     use super::*;
     use std::str;
 
-    pub struct PlanBParser;
+    pub struct PlanBTokenInfoParser;
 
-    impl TokenInfoParser for PlanBParser {
+    impl TokenInfoParser for PlanBTokenInfoParser {
         fn parse(&self, json: &[u8]) -> ::std::result::Result<TokenInfo, String> {
             parse(json, "uid", "scope", "expires_in")
         }
@@ -150,8 +150,15 @@ mod parsers {
             Ok(JsonValue::Object(data)) => {
                 let user_id = match data.get(user_id_field) {
                     Some(&JsonValue::String(ref user_id)) => Some(UserId::new(user_id.as_ref())),
+                    Some(&JsonValue::Short(ref user_id)) => Some(UserId::new(user_id.as_ref())),
                     None => None,
-                    _ => bail!("Expected a string as the uid".to_string()),
+                    invalid => {
+                        bail!(format!(
+                            "Expected a string as the user id in field '{}' but found a {:?}",
+                            user_id_field,
+                            invalid
+                        ))
+                    }
                 };
                 let scopes = match data.get(scopes_field) {
                     Some(&JsonValue::Array(ref values)) => {
@@ -159,9 +166,11 @@ mod parsers {
                         for elem in values {
                             match elem {
                                 &JsonValue::String(ref v) => scopes.push(Scope(v.clone())),
+                                &JsonValue::Short(ref v) => scopes.push(Scope::new(v.as_ref())),
                                 invalid => {
                                     bail!(format!(
-                                        "Expected a string as a scope but found '{}'",
+                                        "Expected a string as a scope in ['{}'] but found '{}'",
+                                        scopes_field,
                                         invalid
                                     ))
                                 }
@@ -170,21 +179,39 @@ mod parsers {
                         scopes
                     }
                     None => Vec::new(),
-                    _ => bail!("Expected an array for the scopes".to_string()),
+                    invalid => {
+                        bail!(format!(
+                            "Expected an array for the scopes in field '{}' but found a {:?}",
+                            scopes_field,
+                            invalid
+                        ))
+                    }
                 };
                 let expires_in = match data.get(expires_field) {
                     Some(&JsonValue::Number(number)) => {
-                        let f: f64 = number.into();
-
-                        0u64
+                        let expires: f64 = number.into();
+                        let expires = expires.round() as i64;
+                        if expires >= 0 {
+                            expires as u64
+                        } else {
+                            bail!(format!(
+                                "Field '{}' for expires_in_seconds \
+                                must be greater than 0(is {}).",
+                                expires_field,
+                                expires
+                            ))
+                        }
                     }
                     None => {
                         bail!(format!(
-                            "Field '{}' for expires in not found.",
+                            "Field '{}' for expires_in_seconds not found.",
                             expires_field
                         ))
                     }
-                    _ => bail!("Expected a number for expires in".to_string()),
+                    invalid => bail!(format!(
+                        "Expected a number for field '{}' but found a {:?}",
+                        expires_field,
+                        invalid)),
                 };
                 Ok(TokenInfo {
                     user_id: user_id,
@@ -192,8 +219,36 @@ mod parsers {
                     expires_in_seconds: expires_in,
                 })
             }
-            Ok(invalid_value) => Err(format!("Expected an object but found {}", invalid_value)),
+            Ok(_) => Err(
+                "Expected an object but found something else which i won't show\
+                since it might contain a token.".to_string()),
             Err(err) => Err(err.to_string()),
         }
+    }
+
+    #[test]
+    fn parse_plan_b_token_info_full() {
+        let sample = br#"
+        {
+            "access_token": "token",
+            "cn": true,
+            "expires_in": 28292,
+            "grant_type": "password",
+            "open_id": "token",
+            "realm": "/services",
+            "scope": ["cn"],
+            "token_type": "Bearer",
+            "uid": "test2"
+        }"#;
+
+        let expected = TokenInfo {
+            user_id: Some(UserId::new("test2")),
+            scopes: vec!(Scope::new("cn")),
+            expires_in_seconds: 28292,
+        };
+
+        let token_info = PlanBTokenInfoParser.parse(sample).unwrap();
+
+        assert_eq!(expected, token_info);
     }
 }
