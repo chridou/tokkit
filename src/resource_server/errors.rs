@@ -8,6 +8,10 @@ error_chain! {
             description("invalid response content")
             display("Invalid response content: '{}'", t)
         }
+        NotAUser(t: String) {
+            description("not a user")
+            display("Not a user: {}", t)
+        }
         UrlError(t: String) {
             description("invalid url")
             display("Invalid url: '{}'", t)
