@@ -16,26 +16,24 @@ impl fmt::Display for Scope {
 
 /// An error to be returned if the initialization of a component fails.
 #[derive(Debug)]
-pub struct InitializationError {
-    pub message: String,
-}
+pub struct InitializationError(pub String);
 
 impl InitializationError {
     /// Creates a new InitializationError therby allocating a String.
     pub fn new<T: Into<String>>(message: T) -> InitializationError {
-        InitializationError { message: message.into() }
+        InitializationError(message.into())
     }
 }
 
 impl fmt::Display for InitializationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Unauthorized: {}", self.message)
+        write!(f, "Unauthorized: {}", self.0)
     }
 }
 
 impl Error for InitializationError {
     fn description(&self) -> &str {
-        self.message.as_ref()
+        self.0.as_ref()
     }
 
     fn cause(&self) -> Option<&Error> {
@@ -45,12 +43,12 @@ impl Error for InitializationError {
 
 impl From<VarError> for InitializationError {
     fn from(err: VarError) -> Self {
-        InitializationError { message: format!{"{}", err} }
+        InitializationError(format!("{}", err))
     }
 }
 
 impl From<ParseFloatError> for InitializationError {
     fn from(err: ParseFloatError) -> Self {
-        InitializationError { message: format!{"{}", err} }
+        InitializationError(format!("{}", err))
     }
 }

@@ -100,10 +100,32 @@ fn json_to_user(json: &str) -> Result<AuthenticatedUser> {
                 Uid::new(uid.as_ref())
             } else {
                 bail!(ErrorKind::InvalidResponseContent(
-                    format!("Expected a string as the uid in {}", json),
+                    "Expected a string as the uid".to_string(),
                 ))
             };
-            unimplemented!()
+            let scopes = if let Some(&JsonValue::Array(ref values)) = data.get("scopes") {
+                let mut scopes = Vec::with_capacity(values.len());
+                for elem in values {
+                    match elem {
+                        &JsonValue::String(ref v) => scopes.push(Scope(v.clone())),
+                        invalid => {
+                            bail!(ErrorKind::InvalidResponseContent(format!(
+                                "Expected a string as a scope but found '{}'",
+                                invalid
+                            )))
+                        }
+                    }
+                }
+                scopes
+            } else {
+                bail!(ErrorKind::InvalidResponseContent(
+                    "Expected an array for scopes".to_string(),
+                ))
+            };
+            Ok(AuthenticatedUser {
+                uid: uid,
+                scopes: scopes,
+            })
         }
         Ok(invalid_value) => Err(
             ErrorKind::InvalidResponseContent(
