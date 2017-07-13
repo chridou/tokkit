@@ -43,16 +43,7 @@ pub struct GoogleTokenInfoParser;
 
 impl TokenInfoParser for GoogleTokenInfoParser {
     fn parse(&self, json: &[u8]) -> ::std::result::Result<TokenInfo, String> {
-        let mut tokeninfo = parse(json, "user_id", "scope", "expires_in")?;
-
-        if tokeninfo.scopes.len() == 1 {
-            let scopes = tokeninfo.scopes[0].0.split(' ').map(|x| Scope::new(x));
-            let scopes = scopes.collect();
-            tokeninfo.scopes = scopes;
-            Ok(tokeninfo)
-        } else {
-            Ok(tokeninfo)
-        }
+        parse(json, "user_id", "scope", "expires_in")
     }
 }
 
@@ -121,8 +112,8 @@ fn parse(
                     }
                     scopes
                 }
-                Some(&JsonValue::String(ref scope)) => vec![Scope::new(scope.as_ref())],
-                Some(&JsonValue::Short(ref scope)) => vec![Scope::new(scope.as_ref())],
+                Some(&JsonValue::String(ref scope)) => split_scopes(scope.as_ref()),
+                Some(&JsonValue::Short(ref scope)) => split_scopes(scope.as_ref()),
                 None => Vec::new(),
                 invalid => {
                     bail!(format!(
@@ -177,6 +168,10 @@ fn parse(
     }
 }
 
+fn split_scopes(input: &str) -> Vec<Scope> {
+    input.split(' ').map(Scope::new).collect()
+}
+
 #[test]
 fn parse_plan_b_token_info() {
     let sample = br#"
@@ -229,6 +224,33 @@ fn google_token_info() {
 }
 
 #[test]
+fn google_token_info_multiple_scopes() {
+    let sample = br#"
+    {
+        "aud":"8819981768.apps.googleusercontent.com",
+        "user_id":"123456789",
+        "scope":"a b https://www.googleapis.com/auth/drive.metadata.readonly d",
+        "expires_in":436
+    }
+    "#;
+
+    let expected = TokenInfo {
+        user_id: Some(UserId::new("123456789")),
+        scopes: vec![
+            Scope::new("a"),
+            Scope::new("b"),
+            Scope::new("https://www.googleapis.com/auth/drive.metadata.readonly"),
+            Scope::new("d"),
+        ],
+        expires_in_seconds: 436,
+    };
+
+    let token_info = GoogleTokenInfoParser.parse(sample).unwrap();
+
+    assert_eq!(expected, token_info);
+}
+
+#[test]
 fn amazon_token_info() {
     let sample = br#"
     {
@@ -251,3 +273,4 @@ fn amazon_token_info() {
 
     assert_eq!(expected, token_info);
 }
+
