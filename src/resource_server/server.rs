@@ -7,7 +7,7 @@ use resource_server::*;
 
 struct TokenInfoServer {
     url_prefix: Arc<String>,
-    fallback_url_prefix: Arc<Option<String>>,
+    fallback_url_prefix: Option<Arc<String>>,
     http_client: Client,
     parser: Arc<TokenInfoParser>,
 }
@@ -15,7 +15,7 @@ struct TokenInfoServer {
 impl TokenInfoServer {
     pub fn new<P>(
         endpoint: &str,
-        query_parameter: &str,
+        query_parameter: Option<&str>,
         parser: P,
     ) -> ::std::result::Result<TokenInfoServer, InitializationError>
     where
@@ -26,26 +26,24 @@ impl TokenInfoServer {
 
     pub fn new_with_fallback<P>(
         endpoint: &str,
-        query_parameter: &str,
+        query_parameter: Option<&str>,
         fallback_endpoint: Option<&str>,
         parser: P,
     ) -> ::std::result::Result<TokenInfoServer, InitializationError>
     where
         P: TokenInfoParser,
     {
-        let url_prefix = format!("{}?{}=", endpoint, query_parameter);
-        format!("{}test-token", url_prefix).parse::<Url>().map_err(
+        let url_prefix = assemble_url_prefix(endpoint, &query_parameter).map_err(
             |err| {
-                InitializationError(err.to_string())
+                InitializationError(err)
             },
         )?;
 
         let fallback_url_prefix = if let Some(fallback_endpoint_address) = fallback_endpoint {
-            let url_prefix = format!("{}?{}=", fallback_endpoint_address, query_parameter);
-            format!("{}test-fallback-token", url_prefix)
-                .parse::<Url>()
-                .map_err(|err| InitializationError(err.to_string()))?;
-            Some(url_prefix)
+            Some(assemble_url_prefix(
+                fallback_endpoint_address,
+                &query_parameter,
+            ).map_err(|err| InitializationError(err))?)
         } else {
             None
         };
@@ -55,7 +53,7 @@ impl TokenInfoServer {
         )?;
         Ok(TokenInfoServer {
             url_prefix: Arc::new(url_prefix),
-            fallback_url_prefix: Arc::new(fallback_url_prefix),
+            fallback_url_prefix: fallback_url_prefix.map(|fb| Arc::new(fb)),
             http_client: client,
             parser: Arc::new(parser),
         })
@@ -68,11 +66,15 @@ impl TokenInfoServer {
         let endpoint = env::var("TOKKIT_TOKEN_INFO_ENDPOINT").map_err(|err| {
             InitializationError(format!("'TOKKIT_TOKEN_INFO_ENDPOINT':{}", err))
         })?;
-        let query_parameter = env::var("TOKKIT_TOKEN_INFO_QUERY_PARAMETER").map_err(
-            |err| {
-                InitializationError(format!("'TOKKIT_TOKEN_INFO_QUERY_PARAMETER':{}", err))
-            },
-        )?;
+        let query_parameter = match env::var("TOKKIT_TOKEN_INFO_QUERY_PARAMETER") {
+            Ok(v) => Some(v),
+            Err(env::VarError::NotPresent) => None,
+            Err(err) => {
+                return Err(InitializationError(err.to_string())).map_err(|err| {
+                    InitializationError(format!("'TOKKIT_TOKEN_INFO_QUERY_PARAMETER':{}", err))
+                })
+            }
+        };
         let fallback_endpoint = match env::var("TOKKIT_TOKEN_INFO_FALLBACK_ENDPOINT") {
             Ok(v) => Some(v),
             Err(env::VarError::NotPresent) => None,
@@ -84,17 +86,39 @@ impl TokenInfoServer {
         };
         TokenInfoServer::new_with_fallback(
             &endpoint,
-            &query_parameter,
+            query_parameter.as_ref().map(|x| &**x),
             fallback_endpoint.as_ref().map(|x| &**x),
             parser,
         )
     }
 }
 
+fn assemble_url_prefix(
+    endpoint: &str,
+    query_parameter: &Option<&str>,
+) -> ::std::result::Result<String, String> {
+    let mut url_prefix = String::new();
+    if let &Some(query_parameter) = query_parameter {
+        if url_prefix.ends_with('/') {
+            url_prefix.pop();
+        }
+        url_prefix.push_str(&format!("?{}=", query_parameter));
+    } else {
+        if !url_prefix.ends_with('/') {
+            url_prefix.push('/');
+        }
+    }
+    let test_url = format!("{}test_token", url_prefix);
+    let _ = test_url.parse::<Url>().map_err(
+        |err| format!("Invalid URL: {}", err),
+    )?;
+    Ok(url_prefix)
+}
+
 impl TokenInfoService for TokenInfoServer {
     fn get_token_info(&self, token: &Token) -> Result<TokenInfo> {
         let url: Url = complete_url(&self.url_prefix, token)?;
-        let fallback_url = match *self.fallback_url_prefix {
+        let fallback_url = match self.fallback_url_prefix {
             Some(ref fb_url_prefix) => Some(complete_url(fb_url_prefix, token)?),
             None => None,
         };
