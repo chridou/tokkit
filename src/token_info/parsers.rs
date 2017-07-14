@@ -256,12 +256,12 @@ fn google_token_info_multiple_scopes() {
 }
 
 #[test]
-fn google_token_info_multiple_scopes_2_whitespace() {
+fn google_token_info_multiple_scopes_whitespaces() {
     let sample = br#"
     {
         "aud":"8819981768.apps.googleusercontent.com",
         "user_id":"123456789",
-        "scope":"a b  https://www.googleapis.com/auth/drive.metadata.readonly d",
+        "scope":" a     b  https://www.googleapis.com/auth/drive.metadata.readonly d   ",
         "expires_in":436
     }
     "#;
