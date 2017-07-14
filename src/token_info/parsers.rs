@@ -73,7 +73,7 @@ impl TokenInfoParser for AmazonTokenInfoParser {
 }
 
 
-fn parse(
+pub fn parse(
     json: &[u8],
     user_id_field: &str,
     scopes_field: &str,
