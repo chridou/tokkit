@@ -170,7 +170,11 @@ fn parse(
 }
 
 fn split_scopes(input: &str) -> Vec<Scope> {
-    input.split(' ').map(Scope::new).collect()
+    input
+        .split(' ')
+        .filter(|s| s.len() > 0)
+        .map(Scope::new)
+        .collect()
 }
 
 #[test]
@@ -251,6 +255,32 @@ fn google_token_info_multiple_scopes() {
     assert_eq!(expected, token_info);
 }
 
+#[test]
+fn google_token_info_multiple_scopes_2_whitespace() {
+    let sample = br#"
+    {
+        "aud":"8819981768.apps.googleusercontent.com",
+        "user_id":"123456789",
+        "scope":"a b  https://www.googleapis.com/auth/drive.metadata.readonly d",
+        "expires_in":436
+    }
+    "#;
+
+    let expected = TokenInfo {
+        user_id: Some(UserId::new("123456789")),
+        scopes: vec![
+            Scope::new("a"),
+            Scope::new("b"),
+            Scope::new("https://www.googleapis.com/auth/drive.metadata.readonly"),
+            Scope::new("d"),
+        ],
+        expires_in_seconds: 436,
+    };
+
+    let token_info = GoogleTokenInfoParser.parse(sample).unwrap();
+
+    assert_eq!(expected, token_info);
+}
 #[test]
 fn amazon_token_info() {
     let sample = br#"
