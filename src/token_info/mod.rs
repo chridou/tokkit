@@ -1,11 +1,11 @@
 use std::fmt;
+use super::*;
 
-pub mod errors;
+pub mod error;
 mod server;
 mod parsers;
 
-use self::errors::*;
-pub use shared::*;
+use self::error::*;
 
 pub trait TokenInfoParser: 'static {
     fn parse(&self, bytes: &[u8]) -> ::std::result::Result<TokenInfo, String>;

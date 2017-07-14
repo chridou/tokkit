@@ -49,7 +49,8 @@ impl TokenInfoParser for GoogleTokenInfoParser {
 
 /// Parses a `TokenInfo` from JSON
 ///
-/// [Description](https://images-na.ssl-images-amazon.com/images/G/01/lwa/dev/docs/website-developer-guide._TTH_.pdf)
+/// [Description](https://images-na.ssl-images-amazon.
+/// com/images/G/01/lwa/dev/docs/website-developer-guide._TTH_.pdf)
 ///
 /// ##Example
 ///
@@ -273,4 +274,3 @@ fn amazon_token_info() {
 
     assert_eq!(expected, token_info);
 }
-

@@ -3,7 +3,7 @@ use std::io::Read;
 use std::env;
 use std::str;
 use reqwest::{Url, Client, StatusCode, UrlError, Response};
-use resource_server::*;
+use token_info::*;
 
 struct TokenInfoServer {
     url_prefix: Arc<String>,

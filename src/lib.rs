@@ -6,7 +6,9 @@ extern crate error_chain;
 extern crate json;
 extern crate reqwest;
 
+mod shared;
+pub use shared::*;
+
 pub mod client {}
 
-pub mod resource_server;
-pub(crate) mod shared;
+pub mod token_info;
