@@ -2,14 +2,27 @@ use std::fmt;
 use std::env::VarError;
 use std::num::ParseFloatError;
 use std::error::Error;
-use std::collections::BTreeMap;
 
-pub struct Token(pub String);
+/// An access token
+///
+/// See [RFC6749](https://tools.ietf.org/html/rfc6749#page-10)
+pub struct AccessToken(pub String);
 
+impl AccessToken {
+    /// Creates a new `AccessToken`
+    pub fn new<T: Into<String>>(token: T) -> Self {
+        AccessToken(token.into())
+    }
+}
+
+/// An access token scope
+///
+/// See [RFC6749](https://tools.ietf.org/html/rfc6749#page-23)
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Scope(pub String);
 
 impl Scope {
+    /// Creates a new `Scope`
     pub fn new<T: Into<String>>(scope: T) -> Scope {
         Scope(scope.into())
     }
@@ -21,7 +34,11 @@ impl fmt::Display for Scope {
     }
 }
 
-/// An error to be returned if the initialization of a component fails.
+/// A `Result` where the failure is always an `InitializationError`
+pub type InitializationResult<T> = Result<T, InitializationError>;
+
+/// An error to be returned if the initialization of a component
+/// or else fails.
 #[derive(Debug)]
 pub struct InitializationError(pub String);
 

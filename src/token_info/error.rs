@@ -1,3 +1,4 @@
+//! Errors a `TokenInfoService` might return.
 error_chain! {
     types {
         Error, ErrorKind, ResultExt, Result;

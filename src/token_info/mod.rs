@@ -1,31 +1,43 @@
+//! Token verification for protected resources on resource servers.
+//!
+//! See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
+//! and
+//! [Roles](https://tools.ietf.org/html/rfc6749#page-5)
 use std::fmt;
 use super::*;
 
 pub mod error;
-mod server;
-mod parsers;
+pub mod parsers;
+mod remote;
 
+pub use self::remote::*;
 use self::error::*;
 
+/// A parser that can parse a slice of bytes to a `TokenInfo`
 pub trait TokenInfoParser: 'static {
     fn parse(&self, bytes: &[u8]) -> ::std::result::Result<TokenInfo, String>;
 }
 
 impl TokenInfoParser for Fn(&[u8]) -> ::std::result::Result<TokenInfo, String> {
+    /// Parse a slice of bytes to a `TokenInfo`
     fn parse(&self, bytes: &[u8]) -> ::std::result::Result<TokenInfo, String> {
         self(bytes)
     }
 }
 
+/// Gives a `TokenInfo` for an `AccessToken`.
+///
+/// See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
 pub trait TokenInfoService {
-    /// Authenticate a user by Token.
-    fn get_token_info(&self, token: &Token) -> Result<TokenInfo>;
+    /// Gives a `TokenInfo` fa an `AccessToken`.
+    fn get_token_info(&self, token: &AccessToken) -> Result<TokenInfo>;
 
-    fn authenticate_user(&self, token: &Token) -> Result<AuthenticatedUser> {
+    /// Returns an `User` if a `UserId` is present.
+    fn get_user(&self, token: &AccessToken) -> Result<User> {
         let authenticated = self.get_token_info(token)?;
         if let Some(user_id) = authenticated.user_id {
             Ok({
-                AuthenticatedUser {
+                User {
                     user_id: user_id,
                     scopes: authenticated.scopes,
                 }
@@ -38,7 +50,7 @@ pub trait TokenInfoService {
     }
 }
 
-/// An id that uniquely identifies the owner of a resource
+/// An id that uniquely identifies the owner of a protected resource
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub struct UserId(pub String);
 
@@ -54,7 +66,9 @@ impl fmt::Display for UserId {
     }
 }
 
-/// Once a user has been authenticated this struct can be used for authorization.
+/// Information on an `AccessToken` returned by a `TokenInfoService`.
+///
+/// See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
 #[derive(Debug, PartialEq)]
 pub struct TokenInfo {
     pub user_id: Option<UserId>,
@@ -62,27 +76,28 @@ pub struct TokenInfo {
     pub expires_in_seconds: u64,
 }
 
-/// Once a user has been authenticated this struct can be used for authorization.
+/// A known user.
 #[derive(Debug)]
-pub struct AuthenticatedUser {
+pub struct User {
     pub user_id: UserId,
     pub scopes: Vec<Scope>,
 }
 
-impl AuthenticatedUser {
+impl User {
+    /// Create a new `User` with just a `UserId`
     pub fn new(user_id: UserId) -> Self {
-        AuthenticatedUser {
+        User {
             user_id: user_id,
             scopes: Vec::new(),
         }
     }
 
-    /// Use for authorization. Checks whether this user has the given Scope.
+    /// Use for authorization. Checks whether this user has the given `Scope`.
     pub fn has_scope(&self, scope: &Scope) -> bool {
         self.scopes.iter().find(|&s| s == scope).is_some()
     }
 
-    /// Use for authorization. Checks whether this user has all of the given Scopes.
+    /// Use for authorization. Checks whether this user has all of the given `Scopes`.
     pub fn has_scopes(&self, scopes: &[Scope]) -> bool {
         scopes.iter().all(|scope| self.has_scope(scope))
     }
@@ -102,6 +117,7 @@ impl AuthenticatedUser {
     }
 }
 
+/// There is no athorization for the requested resource
 #[derive(Debug)]
 pub struct NotAuthorized(String);
 

@@ -2,6 +2,13 @@
 name = "tokkit"
 version = "0.1.0"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
+license = "Apache-2.0/MIT"
+description = "A simple OAUTH toolkit."
+documentation = "https://docs.rs/tokkit"
+homepage = "https://github.com/chridou/tokkit"
+repository = "https://github.com/chridou/tokkit"
+keywords = ["OAUTH2", "token", "authorization", "resource"]
+categories = ["web-programming"]
 
 [dependencies]
 error-chain = "0.10"
