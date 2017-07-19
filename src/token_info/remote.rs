@@ -265,7 +265,7 @@ impl TokenInfoService for RemoteTokenInfoService {
             Some(ref fb_url_prefix) => Some(complete_url(fb_url_prefix, token)?),
             None => None,
         };
-        get_with_fallback(token, url, fallback_url, &self.http_client, &*self.parser)
+        get_with_fallback(url, fallback_url, &self.http_client, &*self.parser)
     }
 }
 
