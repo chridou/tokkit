@@ -91,7 +91,7 @@ impl TokenInfoParser for CustomTokenInfoParser {
 ///     "#;
 ///
 /// let expected = TokenInfo {
-///     user_id: Some(UserId::new("test2")),
+///     user_id: UserId::new("test2"),
 ///     scopes: vec![Scope::new("cn")],
 ///     expires_in_seconds: 28292,
 /// };
@@ -129,7 +129,7 @@ impl TokenInfoParser for PlanBTokenInfoParser {
 /// "#;
 ///
 /// let expected = TokenInfo {
-///     user_id: Some(UserId::new("123456789")),
+///     user_id: UserId::new("123456789"),
 ///     scopes: vec![
 ///         Scope::new("https://www.googleapis.com/auth/drive.metadata.readonly"),
 ///     ],
@@ -174,7 +174,7 @@ impl TokenInfoParser for GoogleV3TokenInfoParser {
 /// "#;
 ///
 /// let expected = TokenInfo {
-///     user_id: Some(UserId::new("amznl.account.K2LI23KL2LK2")),
+///     user_id: UserId::new("amznl.account.K2LI23KL2LK2"),
 ///     scopes: Vec::new(),
 ///     expires_in_seconds: 3597,
 /// };
@@ -203,9 +203,8 @@ pub fn parse(
     match ::json::parse(json) {
         Ok(JsonValue::Object(data)) => {
             let user_id = match data.get(user_id_field) {
-                Some(&JsonValue::String(ref user_id)) => Some(UserId::new(user_id.as_ref())),
-                Some(&JsonValue::Short(ref user_id)) => Some(UserId::new(user_id.as_ref())),
-                None => None,
+                Some(&JsonValue::String(ref user_id)) => UserId::new(user_id.as_ref()),
+                Some(&JsonValue::Short(ref user_id)) => UserId::new(user_id.as_ref()),
                 invalid => {
                     bail!(format!(
                         "Expected a string as the user id in field '{}' but found a {:?}",
@@ -308,7 +307,7 @@ fn google_v3_token_info_multiple_scopes() {
     "#;
 
     let expected = TokenInfo {
-        user_id: Some(UserId::new("123456789")),
+        user_id: UserId::new("123456789"),
         scopes: vec![
             Scope::new("a"),
             Scope::new("b"),
@@ -335,7 +334,7 @@ fn google_v3_token_info_multiple_scopes_whitespaces() {
     "#;
 
     let expected = TokenInfo {
-        user_id: Some(UserId::new("123456789")),
+        user_id: UserId::new("123456789"),
         scopes: vec![
             Scope::new("a"),
             Scope::new("b"),

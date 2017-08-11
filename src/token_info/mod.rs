@@ -30,24 +30,7 @@ impl TokenInfoParser for Fn(&[u8]) -> ::std::result::Result<TokenInfo, String> {
 /// See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
 pub trait TokenInfoService {
     /// Gives a `TokenInfo` fa an `AccessToken`.
-    fn get_token_info(&self, token: &AccessToken) -> Result<TokenInfo>;
-
-    /// Returns an `User` if a `UserId` is present.
-    fn get_user(&self, token: &AccessToken) -> Result<User> {
-        let authenticated = self.get_token_info(token)?;
-        if let Some(user_id) = authenticated.user_id {
-            Ok({
-                User {
-                    user_id: user_id,
-                    scopes: authenticated.scopes,
-                }
-            })
-        } else {
-            bail!(ErrorKind::NotAUser(
-                "User id is missing in token info".to_string(),
-            ))
-        }
-    }
+    fn introspect(&self, token: &AccessToken) -> Result<TokenInfo>;
 }
 
 /// An id that uniquely identifies the owner of a protected resource
@@ -71,39 +54,23 @@ impl fmt::Display for UserId {
 /// See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
 #[derive(Debug, PartialEq)]
 pub struct TokenInfo {
-    pub user_id: Option<UserId>,
+    pub user_id: UserId,
     pub scopes: Vec<Scope>,
     pub expires_in_seconds: u64,
 }
 
-/// A known user.
-#[derive(Debug)]
-pub struct User {
-    pub user_id: UserId,
-    pub scopes: Vec<Scope>,
-}
-
-impl User {
-    /// Create a new `User` with just a `UserId`
-    pub fn new(user_id: UserId) -> Self {
-        User {
-            user_id: user_id,
-            scopes: Vec::new(),
-        }
-    }
-
-    /// Use for authorization. Checks whether this user has the given `Scope`.
+impl TokenInfo {
+    /// Use for authorization. Checks whether this `TokenInfo` has the given `Scope`.
     pub fn has_scope(&self, scope: &Scope) -> bool {
         self.scopes.iter().find(|&s| s == scope).is_some()
     }
 
-    /// Use for authorization. Checks whether this user has all of the given `Scopes`.
+    /// Use for authorization. Checks whether this `TokenInfo` has all of the given `Scopes`.
     pub fn has_scopes(&self, scopes: &[Scope]) -> bool {
         scopes.iter().all(|scope| self.has_scope(scope))
     }
 
-    /// Authorize the user for an action defined by the given scope.
-    /// If the user does not have the scope this method will fail.
+    /// If the `TokenInfo` does not have the scope this method will fail.
     pub fn must_have_scope(&self, scope: &Scope) -> ::std::result::Result<(), NotAuthorized> {
         if self.has_scope(scope) {
             Ok(())

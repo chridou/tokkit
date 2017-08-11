@@ -4,6 +4,7 @@ use std::env;
 use std::str;
 use reqwest::{Url, Client, StatusCode, UrlError, Response};
 use token_info::*;
+use token_info::error::Error;
 
 /// A builder for a `RemoteTokenInfoService`
 pub struct RemoteTokenInfoServiceBuilder<P: TokenInfoParser> {
@@ -189,7 +190,7 @@ impl<P: TokenInfoParser> Default for RemoteTokenInfoServiceBuilder<P> {
 ///
 /// Returns the result as a `TokenInfo`.
 ///
-/// The `RemoteTokenInfoService` will not do any retries on failures except possibly calling a 
+/// The `RemoteTokenInfoService` will not do any retries on failures except possibly calling a
 /// fallback.
 pub struct RemoteTokenInfoService {
     url_prefix: Arc<String>,
@@ -259,7 +260,7 @@ fn assemble_url_prefix(
 }
 
 impl TokenInfoService for RemoteTokenInfoService {
-    fn get_token_info(&self, token: &AccessToken) -> Result<TokenInfo> {
+    fn introspect(&self, token: &AccessToken) -> Result<TokenInfo> {
         let url: Url = complete_url(&self.url_prefix, token)?;
         let fallback_url = match self.fallback_url_prefix {
             Some(ref fb_url_prefix) => Some(complete_url(fb_url_prefix, token)?),
@@ -303,11 +304,7 @@ fn get_with_fallback(
     })
 }
 
-fn get_remote(
-    url: Url,
-    http_client: &Client,
-    parser: &TokenInfoParser,
-) -> Result<TokenInfo> {
+fn get_remote(url: Url, http_client: &Client, parser: &TokenInfoParser) -> Result<TokenInfo> {
     match http_client.get(url).send() {
         Ok(ref mut response) => process_response(response, parser),
         Err(err) => Err(ErrorKind::Connection(err.to_string()).into()),
