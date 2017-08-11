@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::Duration;
 
 mod errors;
 
@@ -9,7 +9,7 @@ pub type TokenServiceResult = Result<TokenServiceResponse, TokenServiceError>;
 
 pub struct TokenServiceResponse {
     pub token: AccessToken,
-    pub expires_at: Instant,
+    pub expires_in: Duration,
 }
 
 pub trait TokenService {

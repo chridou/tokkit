@@ -11,6 +11,7 @@ keywords = ["OAUTH2", "token", "authorization", "resource"]
 categories = ["web-programming"]
 
 [dependencies]
+log = "0.3.8"
 error-chain = "0.10"
 json = "0.11"
 reqwest = "0.6"

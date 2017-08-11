@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Instant;
 use std::result::Result as StdResult;
@@ -69,41 +70,41 @@ pub struct ManagedTokenGroup {
 
 pub trait ProvidesTokens {
     fn get_token(&self, name: &TokenName) -> Result<AccessToken>;
+    fn refresh(&self, name: &TokenName);
 }
 
 #[derive(Clone)]
 pub struct TokenProvider {
     inner: Arc<Inner>,
+    sender: Sender<internals::ManagerCommand>,
 }
 
 impl ProvidesTokens for TokenProvider {
     fn get_token(&self, name: &TokenName) -> Result<AccessToken> {
-        self.inner.get_token(name)
+        match self.inner.tokens.get(&name) {
+            Some(&(_, ref guard)) => {
+                match &*guard.lock().unwrap() {
+                    &Ok(ref token) => Ok(token.clone()),
+                    &Err(ref err) => bail!(err.clone()),
+                }
+            }
+            None => bail!(ErrorKind::NoToken(name.clone())),
+        }
+    }
+
+    fn refresh(&self, name: &TokenName) {
+        self.sender
+            .send(internals::ManagerCommand::ForceRefresh(name.clone()))
+            .unwrap()
     }
 }
 
 
-pub struct TokenManager {
-    inner: Arc<internals::Inner>,
-}
+pub struct TokenManager;
 
 impl TokenManager {
-    pub fn start(groups: Vec<ManagedTokenGroup>) -> TokenManager {
-        let inner = internals::initialize(groups);
-        TokenManager { inner }
-    }
-
-    pub fn stop(&self) {
-        self.inner.is_running.store(false, Ordering::Relaxed);
-    }
-
-    pub fn is_running(&self) -> bool {
-        self.inner.is_running.load(Ordering::Relaxed)
-    }
-}
-
-impl ProvidesTokens for TokenManager {
-    fn get_token(&self, name: &TokenName) -> Result<AccessToken> {
-        self.inner.get_token(name)
+    pub fn start(groups: Vec<ManagedTokenGroup>) -> TokenProvider {
+        let (inner, sender) = internals::initialize(groups);
+        TokenProvider { inner, sender }
     }
 }
