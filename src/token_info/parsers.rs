@@ -124,7 +124,7 @@ impl TokenInfoParser for CustomTokenInfoParser {
 /// let expected = TokenInfo {
 ///     active: true,
 ///     user_id: Some(UserId::new("test2")),
-///     scopes: vec![Scope::new("cn")],
+///     scope: vec![Scope::new("cn")],
 ///     expires_in_seconds: Some(28292),
 /// };
 ///
@@ -163,7 +163,7 @@ impl TokenInfoParser for PlanBTokenInfoParser {
 /// let expected = TokenInfo {
 ///     active: true,
 ///     user_id: Some(UserId::new("123456789")),
-///     scopes: vec![
+///     scope: vec![
 ///         Scope::new("https://www.googleapis.com/auth/drive.metadata.readonly"),
 ///     ],
 ///     expires_in_seconds: Some(436),
@@ -215,7 +215,7 @@ impl TokenInfoParser for GoogleV3TokenInfoParser {
 /// let expected = TokenInfo {
 ///     active: true,
 ///     user_id: Some(UserId::new("amznl.account.K2LI23KL2LK2")),
-///     scopes: Vec::new(),
+///     scope: Vec::new(),
 ///     expires_in_seconds: Some(3597),
 /// };
 ///
@@ -370,7 +370,7 @@ fn google_v3_token_info_multiple_scopes() {
     let expected = TokenInfo {
         active: true,
         user_id: Some(UserId::new("123456789")),
-        scopes: vec![
+        scope: vec![
             Scope::new("a"),
             Scope::new("b"),
             Scope::new("https://www.googleapis.com/auth/drive.metadata.readonly"),
@@ -398,7 +398,7 @@ fn google_v3_token_info_multiple_scopes_whitespaces() {
     let expected = TokenInfo {
         active:true,
         user_id: Some(UserId::new("123456789")),
-        scopes: vec![
+        scope: vec![
             Scope::new("a"),
             Scope::new("b"),
             Scope::new("https://www.googleapis.com/auth/drive.metadata.readonly"),
