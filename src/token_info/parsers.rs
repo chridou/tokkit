@@ -7,7 +7,7 @@ use std::env;
 pub struct CustomTokenInfoParser {
     active_field: Option<String>,
     user_id_field: Option<String>,
-    scopes_field: Option<String>,
+    scope_field: Option<String>,
     expires_in_field: Option<String>,
 }
 
@@ -15,7 +15,7 @@ impl CustomTokenInfoParser {
     pub fn new<U, S, E, A>(
         active_field: Option<A>,
         user_id_field: Option<U>,
-        scopes_field: Option<S>,
+        scope_field: Option<S>,
         expires_in_field: Option<E>,
     ) -> Self
     where
@@ -27,7 +27,7 @@ impl CustomTokenInfoParser {
         Self {
             active_field: active_field.map(Into::into),
             user_id_field: user_id_field.map(Into::into),
-            scopes_field: scopes_field.map(Into::into),
+            scope_field: scope_field.map(Into::into),
             expires_in_field: expires_in_field.map(Into::into),
         }
     }
@@ -36,9 +36,9 @@ impl CustomTokenInfoParser {
     ///
     /// The following variables used to identify the field in a token info response:
     ///
-    /// * `TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD`(mandatory): The field name for the user id
-    /// * `TOKKIT_TOKEN_INFO_PARSER_SCOPES_FIELD`(mandatory): The field name for scopes
-    /// * `TOKKIT_TOKEN_INFO_PARSER_EXPIRES_IN_FIELD`(mandatory): The field name for the
+    /// * `TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD`(optional): The field name for the user id
+    /// * `TOKKIT_TOKEN_INFO_PARSER_SCOPE_FIELD`(optional): The field name for scopes
+    /// * `TOKKIT_TOKEN_INFO_PARSER_EXPIRES_IN_FIELD`(optional): The field name for the
     /// * `TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD`(optional): The field name for the
     /// active field
     pub fn from_env() -> InitializationResult<CustomTokenInfoParser> {
@@ -50,12 +50,12 @@ impl CustomTokenInfoParser {
                     format!("'TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD': {}", err),
                 )),
             }?;
-        let scopes_field: Option<String> =
-            match env::var("TOKKIT_TOKEN_INFO_PARSER_SCOPES_FIELD") {
+        let scope_field: Option<String> =
+            match env::var("TOKKIT_TOKEN_INFO_PARSER_SCOPE_FIELD") {
                 Ok(v) => Ok(Some(v)),
                 Err(VarError::NotPresent) => Ok(None),
                 Err(err) => Err(InitializationError(
-                    format!("'TOKKIT_TOKEN_INFO_PARSER_SCOPES_FIELD': {}", err),
+                    format!("'TOKKIT_TOKEN_INFO_PARSER_SCOPE_FIELD': {}", err),
                 )),
             }?;
         let expires_in_field: Option<String> =
@@ -78,7 +78,7 @@ impl CustomTokenInfoParser {
         Ok(Self::new(
             active_field,
             user_id_field,
-            scopes_field,
+            scope_field,
             expires_in_field,
         ))
     }
@@ -90,7 +90,7 @@ impl TokenInfoParser for CustomTokenInfoParser {
             json,
             self.active_field.as_ref().map(|s| &**s),
             self.user_id_field.as_ref().map(|s| &**s),
-            self.scopes_field.as_ref().map(|s| &**s),
+            self.scope_field.as_ref().map(|s| &**s),
             self.expires_in_field.as_ref().map(|s| &**s),
         )
     }
@@ -236,7 +236,7 @@ pub fn parse(
     json: &[u8],
     active_field: Option<&str>,
     user_id_field: Option<&str>,
-    scopes_field: Option<&str>,
+    scope_field: Option<&str>,
     expires_field: Option<&str>,
 ) -> ::std::result::Result<TokenInfo, String> {
     use json::*;
@@ -273,7 +273,7 @@ pub fn parse(
             }} else {
                 None
             };
-            let scopes = if let Some(scopes_field) = scopes_field {match data.get(scopes_field) {
+            let scope = if let Some(scope_field) = scope_field {match data.get(scope_field) {
                 Some(&JsonValue::Array(ref values)) => {
                     let mut scopes = Vec::with_capacity(values.len());
                     for elem in values {
@@ -283,7 +283,7 @@ pub fn parse(
                             invalid => {
                                 bail!(format!(
                                     "Expected a string as a scope in ['{}'] but found '{}'",
-                                    scopes_field,
+                                    scope_field,
                                     invalid
                                 ))
                             }
@@ -298,7 +298,7 @@ pub fn parse(
                     bail!(format!(
                         "Expected an array or string for the \
                         scope(s) in field '{}' but found a {:?}",
-                        scopes_field,
+                        scope_field,
                         invalid
                     ))
                 }
@@ -335,7 +335,7 @@ pub fn parse(
             Ok(TokenInfo {
                 active: active,
                 user_id: user_id,
-                scopes: scopes,
+                scope: scope,
                 expires_in_seconds: expires_in,
             })
         }
