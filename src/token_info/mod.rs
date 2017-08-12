@@ -54,9 +54,10 @@ impl fmt::Display for UserId {
 /// See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
 #[derive(Debug, PartialEq)]
 pub struct TokenInfo {
-    pub user_id: UserId,
+    pub active: bool,
+    pub user_id: Option<UserId>,
     pub scopes: Vec<Scope>,
-    pub expires_in_seconds: u64,
+    pub expires_in_seconds: Option<u64>,
 }
 
 impl TokenInfo {
@@ -75,11 +76,9 @@ impl TokenInfo {
         if self.has_scope(scope) {
             Ok(())
         } else {
-            Err(NotAuthorized(format!(
-                "User '{}' does not have the required scope '{}'.",
-                self.user_id,
-                scope
-            )))
+            Err(NotAuthorized(
+                format!("Required scope '{}' not present.", scope),
+            ))
         }
     }
 }

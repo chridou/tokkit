@@ -5,22 +5,30 @@ use std::env;
 
 /// A configurable `TokenInfoParser`
 pub struct CustomTokenInfoParser {
-    user_id_field: String,
-    scopes_field: String,
-    expires_in_field: String,
+    active_field: Option<String>,
+    user_id_field: Option<String>,
+    scopes_field: Option<String>,
+    expires_in_field: Option<String>,
 }
 
 impl CustomTokenInfoParser {
-    pub fn new<U, S, E>(user_id_field: U, scopes_field: S, expires_in_field: E) -> Self
+    pub fn new<U, S, E, A>(
+        active_field: Option<A>,
+        user_id_field: Option<U>,
+        scopes_field: Option<S>,
+        expires_in_field: Option<E>,
+    ) -> Self
     where
         U: Into<String>,
         S: Into<String>,
         E: Into<String>,
+        A: Into<String>,
     {
-        CustomTokenInfoParser {
-            user_id_field: user_id_field.into(),
-            scopes_field: scopes_field.into(),
-            expires_in_field: expires_in_field.into(),
+        Self {
+            active_field: active_field.map(Into::into),
+            user_id_field: user_id_field.map(Into::into),
+            scopes_field: scopes_field.map(Into::into),
+            expires_in_field: expires_in_field.map(Into::into),
         }
     }
 
@@ -31,26 +39,48 @@ impl CustomTokenInfoParser {
     /// * `TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD`(mandatory): The field name for the user id
     /// * `TOKKIT_TOKEN_INFO_PARSER_SCOPES_FIELD`(mandatory): The field name for scopes
     /// * `TOKKIT_TOKEN_INFO_PARSER_EXPIRES_IN_FIELD`(mandatory): The field name for the
-    /// expiration
+    /// * `TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD`(optional): The field name for the
+    /// active field
     pub fn from_env() -> InitializationResult<CustomTokenInfoParser> {
-        let user_id_field = env::var("TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD").map_err(
-            |err| {
-                InitializationError(format!("'TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD': {}", err))
-            },
-        )?;
-        let scopes_field = env::var("TOKKIT_TOKEN_INFO_PARSER_SCOPES_FIELD").map_err(
-            |err| {
-                InitializationError(format!("'TOKKIT_TOKEN_INFO_PARSER_SCOPES_FIELD': {}", err))
-            },
-        )?;
-        let expires_in_field = env::var("TOKKIT_TOKEN_INFO_PARSER_EXPIRES_IN_FIELD")
-            .map_err(|err| {
-                InitializationError(format!(
+        let user_id_field: Option<String> =
+            match env::var("TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD") {
+                Ok(v) => Ok(Some(v)),
+                Err(VarError::NotPresent) => Ok(None),
+                Err(err) => Err(InitializationError(
+                    format!("'TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD': {}", err),
+                )),
+            }?;
+        let scopes_field: Option<String> =
+            match env::var("TOKKIT_TOKEN_INFO_PARSER_SCOPES_FIELD") {
+                Ok(v) => Ok(Some(v)),
+                Err(VarError::NotPresent) => Ok(None),
+                Err(err) => Err(InitializationError(
+                    format!("'TOKKIT_TOKEN_INFO_PARSER_SCOPES_FIELD': {}", err),
+                )),
+            }?;
+        let expires_in_field: Option<String> =
+            match env::var("TOKKIT_TOKEN_INFO_PARSER_EXPIRES_IN_FIELD") {
+                Ok(v) => Ok(Some(v)),
+                Err(VarError::NotPresent) => Ok(None),
+                Err(err) => Err(InitializationError(format!(
                     "'TOKKIT_TOKEN_INFO_PARSER_EXPIRES_IN_FIELD': {}",
                     err
-                ))
-            })?;
-        Ok(Self::new(user_id_field, scopes_field, expires_in_field))
+                ))),
+            }?;
+        let active_field: Option<String> =
+            match env::var("TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD") {
+                Ok(v) => Ok(Some(v)),
+                Err(VarError::NotPresent) => Ok(None),
+                Err(err) => Err(InitializationError(
+                    format!("'TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD': {}", err),
+                )),
+            }?;
+        Ok(Self::new(
+            active_field,
+            user_id_field,
+            scopes_field,
+            expires_in_field,
+        ))
     }
 }
 
@@ -58,9 +88,10 @@ impl TokenInfoParser for CustomTokenInfoParser {
     fn parse(&self, json: &[u8]) -> ::std::result::Result<TokenInfo, String> {
         parse(
             json,
-            &self.user_id_field,
-            &self.scopes_field,
-            &self.expires_in_field,
+            self.active_field.as_ref().map(|s| &**s),
+            self.user_id_field.as_ref().map(|s| &**s),
+            self.scopes_field.as_ref().map(|s| &**s),
+            self.expires_in_field.as_ref().map(|s| &**s),
         )
     }
 }
@@ -91,9 +122,10 @@ impl TokenInfoParser for CustomTokenInfoParser {
 ///     "#;
 ///
 /// let expected = TokenInfo {
-///     user_id: UserId::new("test2"),
+///     active: true,
+///     user_id: Some(UserId::new("test2")),
 ///     scopes: vec![Scope::new("cn")],
-///     expires_in_seconds: 28292,
+///     expires_in_seconds: Some(28292),
 /// };
 ///
 /// let token_info = PlanBTokenInfoParser.parse(sample).unwrap();
@@ -104,7 +136,7 @@ pub struct PlanBTokenInfoParser;
 
 impl TokenInfoParser for PlanBTokenInfoParser {
     fn parse(&self, json: &[u8]) -> ::std::result::Result<TokenInfo, String> {
-        parse(json, "uid", "scope", "expires_in")
+        parse(json, None, Some("uid"), Some("scope"), Some("expires_in"))
     }
 }
 
@@ -129,11 +161,12 @@ impl TokenInfoParser for PlanBTokenInfoParser {
 /// "#;
 ///
 /// let expected = TokenInfo {
-///     user_id: UserId::new("123456789"),
+///     active: true,
+///     user_id: Some(UserId::new("123456789")),
 ///     scopes: vec![
 ///         Scope::new("https://www.googleapis.com/auth/drive.metadata.readonly"),
 ///     ],
-///     expires_in_seconds: 436,
+///     expires_in_seconds: Some(436),
 /// };
 ///
 /// let token_info = GoogleV3TokenInfoParser.parse(sample).unwrap();
@@ -146,7 +179,13 @@ pub struct GoogleV3TokenInfoParser;
 
 impl TokenInfoParser for GoogleV3TokenInfoParser {
     fn parse(&self, json: &[u8]) -> ::std::result::Result<TokenInfo, String> {
-        parse(json, "user_id", "scope", "expires_in")
+        parse(
+            json,
+            None,
+            Some("user_id"),
+            Some("scope"),
+            Some("expires_in"),
+        )
     }
 }
 
@@ -174,9 +213,10 @@ impl TokenInfoParser for GoogleV3TokenInfoParser {
 /// "#;
 ///
 /// let expected = TokenInfo {
-///     user_id: UserId::new("amznl.account.K2LI23KL2LK2"),
+///     active: true,
+///     user_id: Some(UserId::new("amznl.account.K2LI23KL2LK2")),
 ///     scopes: Vec::new(),
-///     expires_in_seconds: 3597,
+///     expires_in_seconds: Some(3597),
 /// };
 ///
 /// let token_info = AmazonTokenInfoParser.parse(sample).unwrap();
@@ -187,24 +227,42 @@ pub struct AmazonTokenInfoParser;
 
 impl TokenInfoParser for AmazonTokenInfoParser {
     fn parse(&self, json: &[u8]) -> ::std::result::Result<TokenInfo, String> {
-        parse(json, "user_id", "scope", "exp")
+        parse(json, None, Some("user_id"), Some("scope"), Some("exp"))
     }
 }
 
 
 pub fn parse(
     json: &[u8],
-    user_id_field: &str,
-    scopes_field: &str,
-    expires_field: &str,
+    active_field: Option<&str>,
+    user_id_field: Option<&str>,
+    scopes_field: Option<&str>,
+    expires_field: Option<&str>,
 ) -> ::std::result::Result<TokenInfo, String> {
     use json::*;
     let json = str::from_utf8(json).map_err(|err| err.to_string())?;
     match ::json::parse(json) {
         Ok(JsonValue::Object(data)) => {
-            let user_id = match data.get(user_id_field) {
-                Some(&JsonValue::String(ref user_id)) => UserId::new(user_id.as_ref()),
-                Some(&JsonValue::Short(ref user_id)) => UserId::new(user_id.as_ref()),
+            let active = if let Some(active_field) = active_field { 
+                match data.get(active_field) {
+                Some(&JsonValue::Boolean(active)) => 
+                    active,
+                Some(&JsonValue::Short(s)) => 
+                    s.parse().map_err(|err|ToString::to_string(&err))?,
+                invalid => {
+                    bail!(format!(
+                        "Expected a boolean as the 'active' field in '{}' but found a {:?}",
+                        active_field,
+                        invalid
+                    ))
+                }
+            }} else {
+                true
+            };
+            let user_id = if let Some(user_id_field) = user_id_field { 
+                match data.get(user_id_field) {
+                Some(&JsonValue::Short(ref user_id)) => Some(UserId::new(user_id.as_ref())),
+                Some(&JsonValue::String(ref user_id)) => Some(UserId::new(user_id.as_ref())),
                 invalid => {
                     bail!(format!(
                         "Expected a string as the user id in field '{}' but found a {:?}",
@@ -212,8 +270,10 @@ pub fn parse(
                         invalid
                     ))
                 }
+            }} else {
+                None
             };
-            let scopes = match data.get(scopes_field) {
+            let scopes = if let Some(scopes_field) = scopes_field {match data.get(scopes_field) {
                 Some(&JsonValue::Array(ref values)) => {
                     let mut scopes = Vec::with_capacity(values.len());
                     for elem in values {
@@ -242,13 +302,13 @@ pub fn parse(
                         invalid
                     ))
                 }
-            };
-            let expires_in = match data.get(expires_field) {
+            }} else {Vec::new()};
+            let expires_in = if let Some(expires_field) = expires_field { match data.get(expires_field) {
                 Some(&JsonValue::Number(number)) => {
                     let expires: f64 = number.into();
                     let expires = expires.round() as i64;
                     if expires >= 0 {
-                        expires as u64
+                        Some(expires as u64)
                     } else {
                         bail!(format!(
                             "Field '{}' for expires_in_seconds \
@@ -271,8 +331,9 @@ pub fn parse(
                         invalid
                     ))
                 }
-            };
+            }} else {None};
             Ok(TokenInfo {
+                active: active,
                 user_id: user_id,
                 scopes: scopes,
                 expires_in_seconds: expires_in,
@@ -307,14 +368,15 @@ fn google_v3_token_info_multiple_scopes() {
     "#;
 
     let expected = TokenInfo {
-        user_id: UserId::new("123456789"),
+        active: true,
+        user_id: Some(UserId::new("123456789")),
         scopes: vec![
             Scope::new("a"),
             Scope::new("b"),
             Scope::new("https://www.googleapis.com/auth/drive.metadata.readonly"),
             Scope::new("d"),
         ],
-        expires_in_seconds: 436,
+        expires_in_seconds: Some(436),
     };
 
     let token_info = GoogleV3TokenInfoParser.parse(sample).unwrap();
@@ -334,14 +396,15 @@ fn google_v3_token_info_multiple_scopes_whitespaces() {
     "#;
 
     let expected = TokenInfo {
-        user_id: UserId::new("123456789"),
+        active:true,
+        user_id: Some(UserId::new("123456789")),
         scopes: vec![
             Scope::new("a"),
             Scope::new("b"),
             Scope::new("https://www.googleapis.com/auth/drive.metadata.readonly"),
             Scope::new("d"),
         ],
-        expires_in_seconds: 436,
+        expires_in_seconds: Some(436),
     };
 
     let token_info = GoogleV3TokenInfoParser.parse(sample).unwrap();
