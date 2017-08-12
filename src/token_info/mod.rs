@@ -82,7 +82,7 @@ pub struct TokenInfo {
     /// as defined in JWT [RFC7519](https://tools.ietf.org/html/rfc7519).
     ///
     /// Remark: Contains the number of seconds until the token expires.
-    /// This seems to be used by by most introspection services.
+    /// This seems to be used by most introspection services.
     pub expires_in_seconds: Option<u64>,
 }
 

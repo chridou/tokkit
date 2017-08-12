@@ -3,12 +3,29 @@ use super::*;
 use std::str;
 use std::env;
 
-/// A configurable `TokenInfoParser`
+/// A configurable `TokenInfoParser` that parses a `TokenInfo` from JSON
+/// returned by a token introspection service.
 pub struct CustomTokenInfoParser {
-    active_field: Option<String>,
-    user_id_field: Option<String>,
-    scope_field: Option<String>,
-    expires_in_field: Option<String>,
+    /// The field name in the JSON that identifies the `active` field 
+    /// for the `TokenInfo`. If None the field will not be looked up
+    /// and set to `true` in the `TokenInfo` right away.
+    /// The reason is that this is a mandatory field in the `TokenInfo`
+    /// and that we assume that if a token introspection service does
+    /// not provide this field it would return an error in the introspection request
+    /// in case the token is not active at the time the request was made.
+    pub active_field: Option<String>,
+    /// The field name in the JSON that identifies the `user_id` field 
+    /// for the `TokenInfo`. If None the field will not be looked up
+    /// and set to `None` in the `TokenInfo` right away.
+    pub user_id_field: Option<String>,
+    /// The field name in the JSON that identifies the `scope` field 
+    /// for the `TokenInfo`. If None the field will not be looked up
+    /// and set to `None` in the `TokenInfo` right away.
+    pub scope_field: Option<String>,
+    /// The field name in the JSON that identifies the `expires_in` field 
+    /// for the `TokenInfo`. If None the field will not be looked up
+    /// and set to `None` in the `TokenInfo` right away.
+    pub expires_in_field: Option<String>,
 }
 
 impl CustomTokenInfoParser {
