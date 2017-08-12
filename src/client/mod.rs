@@ -71,6 +71,12 @@ pub struct ManagedTokenGroup {
 pub trait ProvidesTokens {
     fn get_token(&self, name: &TokenName) -> Result<AccessToken>;
     fn refresh(&self, name: &TokenName);
+    fn pinned_provider(&self, &TokenName) -> Result<PinnedTokenProvider>;
+}
+
+pub trait ProvidesPinnedToken {
+    fn get_token(&self) -> Result<AccessToken>;
+    fn refresh(&self);
 }
 
 #[derive(Clone)]
@@ -94,11 +100,39 @@ impl ProvidesTokens for TokenProvider {
 
     fn refresh(&self, name: &TokenName) {
         self.sender
-            .send(internals::ManagerCommand::ForceRefresh(name.clone()))
+            .send(internals::ManagerCommand::ForceRefresh(
+                name.clone(),
+                Instant::now(),
+            ))
             .unwrap()
+    }
+
+    fn pinned_provider(&self, token_name: &TokenName) -> Result<PinnedTokenProvider> {
+        match self.inner.tokens.get(token_name) {
+            Some(_) => Ok(PinnedTokenProvider {
+                token_provider: self.clone(),
+                token_name: token_name.clone(),
+            }),
+            None => Err(ErrorKind::NoToken(token_name.clone()).into()),
+        }
     }
 }
 
+#[derive(Clone)]
+pub struct PinnedTokenProvider {
+    token_provider: TokenProvider,
+    token_name: TokenName,
+}
+
+impl ProvidesPinnedToken for PinnedTokenProvider {
+    fn get_token(&self) -> Result<AccessToken> {
+        self.token_provider.get_token(&self.token_name)
+    }
+
+    fn refresh(&self) {
+        self.token_provider.refresh(&self.token_name)
+    }
+}
 
 pub struct TokenManager;
 
