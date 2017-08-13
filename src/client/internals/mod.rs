@@ -9,7 +9,27 @@ mod token_updater;
 use client::tokenservice::TokenService;
 use super::*;
 
-pub fn initialize(groups: Vec<ManagedTokenGroup>) -> (Arc<Inner>, mpsc::Sender<ManagerCommand>) {
+pub trait Clock : Clone {
+    fn now(&self) -> Instant;
+}
+
+pub struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }    
+}
+
+impl Clone for SystemClock {
+    fn clone(&self) -> Self where Self: Sized {
+        SystemClock
+    }
+    
+}
+
+
+pub fn initialize<C: Clock + Send + 'static>(groups: Vec<ManagedTokenGroup>, clock: C) -> (Arc<Inner>, mpsc::Sender<ManagerCommand>) {
     let mut states = Vec::new();
     let mut tokens: BTreeMap<TokenName, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)> =
         Default::default();
@@ -50,21 +70,23 @@ pub fn initialize(groups: Vec<ManagedTokenGroup>) -> (Arc<Inner>, mpsc::Sender<M
 
     let inner = Arc::new(Inner { tokens, is_running });
 
-    start(states, inner.clone(), tx.clone(), rx);
+    start(states, inner.clone(), tx.clone(), rx, clock);
 
     (inner.clone(), tx)
 }
 
-fn start(
+fn start<C: Clock + Send + 'static>(
     states: Vec<Mutex<TokenState>>,
     inner: Arc<Inner>,
     sender: mpsc::Sender<ManagerCommand>,
     receiver: mpsc::Receiver<ManagerCommand>,
+    clock: C,
 ) {
     let states1 = Arc::new(states);
     let states2 = states1.clone();
     let inner1 = inner.clone();
     let sender1 = sender.clone();
+    let clock1 = clock.clone();
     thread::spawn(move || {
         request_scheduler::RefreshScheduler::start(
             &*states1,
@@ -72,6 +94,7 @@ fn start(
             Duration::from_secs(30),
             Duration::from_secs(60),
             &inner1.is_running,
+            &clock,
         )
     });
     thread::spawn(move || {
@@ -81,6 +104,7 @@ fn start(
             receiver,
             sender,
             &inner.is_running,
+            &clock,
         )
     });
 }

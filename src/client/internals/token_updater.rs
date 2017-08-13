@@ -11,6 +11,7 @@ pub struct TokenUpdater<'a> {
     receiver: mpsc::Receiver<ManagerCommand>,
     sender: mpsc::Sender<ManagerCommand>,
     is_running: &'a AtomicBool,
+    clock: &'a Clock
 }
 
 impl<'a> TokenUpdater<'a> {
@@ -20,6 +21,7 @@ impl<'a> TokenUpdater<'a> {
         receiver: mpsc::Receiver<ManagerCommand>,
         sender: mpsc::Sender<ManagerCommand>,
         is_running: &'a AtomicBool,
+    clock: &'a Clock
     ) {
         TokenUpdater {
             states,
@@ -27,6 +29,7 @@ impl<'a> TokenUpdater<'a> {
             receiver,
             sender,
             is_running,
+            clock,
         }.run_updater_loop();
     }
 

@@ -14,6 +14,7 @@ mod internals;
 use self::error::*;
 use self::tokenservice::*;
 use self::internals::Inner;
+use super::InitializationError;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TokenName(pub String);
@@ -25,8 +26,40 @@ impl fmt::Display for TokenName {
 }
 
 pub struct ManagedTokenBuilder {
-    pub name: Option<String>,
+    pub name: Option<TokenName>,
     pub scopes: Vec<Scope>,
+}
+
+impl ManagedTokenBuilder {
+    pub fn with_name(&mut self, name: TokenName) -> &mut Self {
+        self.name = Some(name);
+        self
+    } 
+
+    pub fn with_scope(&mut self, scope: Scope) -> &mut Self {
+        self.scopes.push(scope);
+        self
+    } 
+
+     pub fn with_scopes(&mut self, scopes: Vec<Scope>) -> &mut Self {
+         for scope in scopes {
+            self.scopes.push(scope);
+         }
+        self
+    } 
+
+    pub fn build(self) -> StdResult<ManagedToken, InitializationError> {
+        let name = if let Some(name) = self.name {
+            name
+        } else {
+            bail!(InitializationError("".to_string()))
+        };
+
+        Ok(ManagedToken {
+            name: name,
+            scopes: self.scopes,
+        })
+    }
 }
 
 impl Default for ManagedTokenBuilder {
@@ -46,8 +79,8 @@ pub struct ManagedToken {
 pub struct ManagedTokenGroupBuilder<S: TokenService> {
     pub token_service: Option<S>,
     pub managed_tokens: Vec<ManagedToken>,
-    pub refresh_threshold: Option<f32>,
-    pub warning_threshold: Option<f32>,
+    pub refresh_threshold: f32,
+    pub warning_threshold: f32,
 }
 
 impl<S: TokenService> Default for ManagedTokenGroupBuilder<S> {
@@ -55,8 +88,8 @@ impl<S: TokenService> Default for ManagedTokenGroupBuilder<S> {
         ManagedTokenGroupBuilder {
             token_service: Default::default(),
             managed_tokens: Default::default(),
-            refresh_threshold: Default::default(),
-            warning_threshold: Default::default(),
+            refresh_threshold: 0.75,
+            warning_threshold: 0.85,
         }
     }
 }
@@ -138,7 +171,7 @@ pub struct TokenManager;
 
 impl TokenManager {
     pub fn start(groups: Vec<ManagedTokenGroup>) -> TokenProvider {
-        let (inner, sender) = internals::initialize(groups);
+        let (inner, sender) = internals::initialize(groups, internals::SystemClock);
         TokenProvider { inner, sender }
     }
 }
