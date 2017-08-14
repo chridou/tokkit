@@ -11,7 +11,7 @@ pub struct TokenUpdater<'a> {
     receiver: mpsc::Receiver<ManagerCommand>,
     sender: mpsc::Sender<ManagerCommand>,
     is_running: &'a AtomicBool,
-    clock: &'a Clock
+    clock: &'a Clock,
 }
 
 impl<'a> TokenUpdater<'a> {
@@ -21,7 +21,7 @@ impl<'a> TokenUpdater<'a> {
         receiver: mpsc::Receiver<ManagerCommand>,
         sender: mpsc::Sender<ManagerCommand>,
         is_running: &'a AtomicBool,
-    clock: &'a Clock
+        clock: &'a Clock,
     ) {
         TokenUpdater {
             states,
@@ -37,29 +37,10 @@ impl<'a> TokenUpdater<'a> {
         debug!("Starting updater loop");
         while self.is_running.load(Ordering::Relaxed) {
             match self.receiver.recv() {
-                Ok(ManagerCommand::ScheduledRefresh(idx, timestamp)) => {
-                    let state = &self.states[idx];
-                    let token_name = &state.lock().unwrap().name;
-                    debug!("Scheduled refresh for token '{}'", token_name);
-                    let &(_, ref token) = self.tokens.get(token_name).unwrap();
-                    self.refresh_token(state, token, timestamp);
-                }
-                Ok(ManagerCommand::ForceRefresh(token_name, timestamp)) => {
-                    info!("Forced refresh for token '{}'", token_name);
-                    let &(idx, ref token) = self.tokens.get(&token_name).unwrap();
-                    let state = &self.states[idx];
-                    self.refresh_token(state, token, timestamp);
-                }
-                Ok(ManagerCommand::RefreshOnError(idx, timestamp)) => {
-                    let state = &self.states[idx];
-                    let token_name = &state.lock().unwrap().name;
-                    info!("Refresh on error for token '{}'", token_name);
-                    let &(_, ref token) = self.tokens.get(token_name).unwrap();
-                    self.refresh_token(state, token, timestamp);
-                }
-                Ok(ManagerCommand::Stop) => {
-                    warn!("Received stop command.");
-                    break;
+                Ok(cmd) => {
+                    if !self.on_command(cmd) {
+                        break;
+                    }
                 }
                 Err(err) => {
                     error!("Failed to receive command from channel: {}", err);
@@ -68,6 +49,38 @@ impl<'a> TokenUpdater<'a> {
             }
         }
         info!("Updater loop exited.")
+    }
+
+    fn on_command(&self, cmd: ManagerCommand) -> bool {
+        match cmd {
+            ManagerCommand::ScheduledRefresh(idx, timestamp) => {
+                let state = &self.states[idx];
+                let token_name = &state.lock().unwrap().name;
+                debug!("Scheduled refresh for token '{}'", token_name);
+                let &(_, ref token) = self.tokens.get(token_name).unwrap();
+                self.refresh_token(state, token, timestamp);
+                true
+            }
+            ManagerCommand::ForceRefresh(token_name, timestamp) => {
+                info!("Forced refresh for token '{}'", token_name);
+                let &(idx, ref token) = self.tokens.get(&token_name).unwrap();
+                let state = &self.states[idx];
+                self.refresh_token(state, token, timestamp);
+                true
+            }
+            ManagerCommand::RefreshOnError(idx, timestamp) => {
+                let state = &self.states[idx];
+                let token_name = &state.lock().unwrap().name;
+                info!("Refresh on error for token '{}'", token_name);
+                let &(_, ref token) = self.tokens.get(token_name).unwrap();
+                self.refresh_token(state, token, timestamp);
+                true
+            }
+            ManagerCommand::Stop => {
+                warn!("Received stop command.");
+                false
+            }
+        }
     }
 
     fn refresh_token(
@@ -120,7 +133,7 @@ impl<'a> TokenUpdater<'a> {
                 true
             };
             if do_update {
-                update_token(result, state, token);
+                update_token(result, state, token, self.clock);
             }
         }
     }
@@ -130,13 +143,14 @@ fn update_token(
     rsp: TokenServiceResult,
     state: &mut TokenState,
     token: &Mutex<StdResult<AccessToken, ErrorKind>>,
+    clock: &Clock,
 ) {
     match rsp {
         Ok(token_response) => {
             {
                 *token.lock().unwrap() = Ok(token_response.token)
             };
-            let now = Instant::now();
+            let now = clock.now();
             state.last_touched = now;
             state.expires_at = now + token_response.expires_in;
             state.refresh_at = now +
@@ -162,7 +176,7 @@ fn update_token(
             {
                 *token.lock().unwrap() = Err(err.into())
             };
-            let now = Instant::now();
+            let now = clock.now();
             state.last_touched = now;
             state.expires_at = now;
             state.refresh_at = now;

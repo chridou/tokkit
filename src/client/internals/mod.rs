@@ -9,7 +9,7 @@ mod token_updater;
 use client::tokenservice::TokenService;
 use super::*;
 
-pub trait Clock : Clone {
+pub trait Clock {
     fn now(&self) -> Instant;
 }
 
@@ -18,18 +18,23 @@ pub struct SystemClock;
 impl Clock for SystemClock {
     fn now(&self) -> Instant {
         Instant::now()
-    }    
+    }
 }
 
 impl Clone for SystemClock {
-    fn clone(&self) -> Self where Self: Sized {
+    fn clone(&self) -> Self
+    where
+        Self: Sized,
+    {
         SystemClock
     }
-    
 }
 
 
-pub fn initialize<C: Clock + Send + 'static>(groups: Vec<ManagedTokenGroup>, clock: C) -> (Arc<Inner>, mpsc::Sender<ManagerCommand>) {
+pub fn initialize<C: Clock + Clone + Send + 'static>(
+    groups: Vec<ManagedTokenGroup>,
+    clock: C,
+) -> (Arc<Inner>, mpsc::Sender<ManagerCommand>) {
     let mut states = Vec::new();
     let mut tokens: BTreeMap<TokenName, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)> =
         Default::default();
@@ -75,7 +80,7 @@ pub fn initialize<C: Clock + Send + 'static>(groups: Vec<ManagedTokenGroup>, clo
     (inner.clone(), tx)
 }
 
-fn start<C: Clock + Send + 'static>(
+fn start<C: Clock + Clone + Send + 'static>(
     states: Vec<Mutex<TokenState>>,
     inner: Arc<Inner>,
     sender: mpsc::Sender<ManagerCommand>,
@@ -94,7 +99,7 @@ fn start<C: Clock + Send + 'static>(
             Duration::from_secs(30),
             Duration::from_secs(60),
             &inner1.is_running,
-            &clock,
+            &clock1,
         )
     });
     thread::spawn(move || {
