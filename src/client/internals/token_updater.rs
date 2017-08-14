@@ -189,7 +189,7 @@ fn update_token(
 }
 
 fn call_token_service(service: &TokenService, scopes: &[Scope]) -> TokenServiceResult {
-    let mut call = || -> ::std::result::Result<TokenServiceResponse, BError<TokenServiceError>> {
+    let mut call = || -> StdResult<TokenServiceResponse, BError<TokenServiceError>> {
         match service.get_token(scopes) {
             Ok(rsp) => Ok(rsp),
             Err(err @ TokenServiceError::Server(_)) =>{ 
