@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::sync::mpsc;
 use std::time::{Instant, Duration};
+use backoff::{Error as BError, ExponentialBackoff, Operation};
 
 use super::*;
 
@@ -91,7 +92,7 @@ impl<'a> TokenUpdater<'a> {
     ) {
         let state: &mut TokenState = &mut *state.lock().unwrap();
         if state.last_touched < command_timestamp {
-            let result = state.token_service.get_token(&state.scopes);
+            let result = call_token_service(&*state.token_service, &state.scopes);
             let do_update = if let Err(ref err) = result {
                 info!(
                     "Scheduling refresh on error for token {}: {}",
@@ -185,4 +186,32 @@ fn update_token(
             state.is_error = true;
         }
     }
+}
+
+fn call_token_service(service: &TokenService, scopes: &[Scope]) -> TokenServiceResult {
+    let mut call = || -> ::std::result::Result<TokenServiceResponse, BError<TokenServiceError>> {
+        match service.get_token(scopes) {
+            Ok(rsp) => Ok(rsp),
+            Err(err @ TokenServiceError::Server(_)) =>{ 
+                warn!("Call to token service failed: {}", err);
+                Err(BError::Transient(err)) 
+                },
+            Err(err @ TokenServiceError::Connection(_)) => {
+                warn!("Call to token service failed: {}", err);
+                Err(BError::Transient(err))
+                },
+            Err(err @ TokenServiceError::Other(_)) => {
+                warn!("Call to token service failed: {}", err);
+                Err(BError::Transient(err))},
+            Err(err @ TokenServiceError::Parse(_)) => Err(BError::Permanent(err)),
+            Err(err @ TokenServiceError::Client(_)) => Err(BError::Permanent(err)),
+        }
+    };
+
+    let mut backoff = ExponentialBackoff::default();
+
+    call.retry(&mut backoff).map_err(|err| match err {
+        BError::Transient(inner) => inner,
+        BError::Permanent(inner) => inner,
+    })
 }
