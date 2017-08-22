@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 mod errors;
+mod credentials;
 
 pub use self::errors::*;
 use super::{AccessToken, Scope};

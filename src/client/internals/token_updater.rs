@@ -200,6 +200,9 @@ fn call_token_service(service: &TokenService, scopes: &[Scope]) -> TokenServiceR
                 warn!("Call to token service failed: {}", err);
                 Err(BError::Transient(err))
                 },
+            Err(err @ TokenServiceError::Credentials(_)) => {
+                warn!("Call to token service failed: {}", err);
+                Err(BError::Transient(err))},
             Err(err @ TokenServiceError::Other(_)) => {
                 warn!("Call to token service failed: {}", err);
                 Err(BError::Transient(err))},

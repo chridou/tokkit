@@ -52,7 +52,7 @@ impl ManagedTokenBuilder {
         let name = if let Some(name) = self.name {
             name
         } else {
-            bail!(InitializationError("".to_string()))
+            bail!(InitializationError("Token name is mandatory".to_string()))
         };
 
         Ok(ManagedToken {
@@ -76,14 +76,70 @@ pub struct ManagedToken {
     scopes: Vec<Scope>,
 }
 
-pub struct ManagedTokenGroupBuilder<S: TokenService> {
-    pub token_service: Option<S>,
-    pub managed_tokens: Vec<ManagedToken>,
-    pub refresh_threshold: f32,
-    pub warning_threshold: f32,
+pub struct ManagedTokenGroupBuilder<S: TokenService + 'static> {
+    token_service: Option<Arc<S>>,
+    managed_tokens: Vec<ManagedToken>,
+    refresh_threshold: f32,
+    warning_threshold: f32,
 }
 
-impl<S: TokenService> Default for ManagedTokenGroupBuilder<S> {
+impl<S: TokenService + Send + Sync + 'static> ManagedTokenGroupBuilder<S> {
+    pub fn with_token_service(&mut self, token_service: S) -> &mut Self {
+        self.token_service = Some(Arc::new(token_service));
+        self
+    }
+
+    pub fn with_managed_token(&mut self, managed_token: ManagedToken) -> &mut Self {
+        self.managed_tokens.push(managed_token);
+        self
+    }
+
+        pub fn with_refresh_threshold(&mut self, refresh_threshold: f32) -> &mut Self {
+        self.refresh_threshold = refresh_threshold;
+        self
+    }
+
+    pub fn with_warning_threshold(&mut self, warning_threshold: f32) -> &mut Self {
+        self.refresh_threshold = warning_threshold;
+        self
+    }
+
+    pub fn with_managed_token_from_builder(&mut self, builder: ManagedTokenBuilder)
+    -> StdResult<&mut Self, InitializationError> {
+        let managed_token = builder.build()?;
+        Ok(self.with_managed_token(managed_token))
+    }
+
+    pub fn build(self) -> StdResult<ManagedTokenGroup, InitializationError> {
+        let token_service = if let Some(token_service) = self.token_service {
+            token_service
+        } else {
+            bail!(InitializationError("Token service is mandatory".to_string()))
+        };
+        
+        if self.managed_tokens.is_empty() {
+             bail!(InitializationError("Managed Tokens must not be empty".to_string()))           
+        }
+
+        if self.refresh_threshold <= 0.0 || self.refresh_threshold > 1.0 {
+             bail!(InitializationError("Refresh threshold must be of (0;1]".to_string()))           
+        }
+
+        if self.warning_threshold <= 0.0 || self.warning_threshold > 1.0 {
+             bail!(InitializationError("Warning threshold must be of (0;1]".to_string()))           
+        }
+
+
+        Ok(ManagedTokenGroup {
+    token_service: token_service,
+    managed_tokens: self.managed_tokens,
+    refresh_threshold: self.refresh_threshold,
+    warning_threshold: self.warning_threshold,
+})
+    }
+}
+
+impl<S: TokenService + 'static> Default for ManagedTokenGroupBuilder<S> {
     fn default() -> Self {
         ManagedTokenGroupBuilder {
             token_service: Default::default(),

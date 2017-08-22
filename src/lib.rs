@@ -45,6 +45,7 @@ extern crate error_chain;
 extern crate json;
 extern crate reqwest;
 extern crate backoff;
+extern crate url;
 
 pub mod token_info;
 pub mod client;
