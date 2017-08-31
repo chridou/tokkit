@@ -1,5 +1,5 @@
-
 mod errors;
+mod parsers;
 
 pub use self::errors::*;
 
@@ -29,7 +29,7 @@ pub struct RequestTokenCredentials {
     pub user_credentials: UserCredentials,
 }
 
-pub trait CredentialsProvider{
+pub trait CredentialsProvider {
     fn credentials(&self) -> CredentialsResult<CredentialsError>;
 }
 
@@ -39,10 +39,3 @@ pub struct SplitFileCredentialsProvider {
 }
 
 
-fn parse_client_credentials(bytes: &[u8]) -> CredentialsResult<ClientCredentials> {
-    unimplemented!()
-}
-
-fn parse_user_credentials(bytes: &[u8]) -> CredentialsResult<UserCredentials> {
-    unimplemented!()
-}

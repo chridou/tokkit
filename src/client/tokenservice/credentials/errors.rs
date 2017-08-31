@@ -30,4 +30,3 @@ impl Error for CredentialsError {
         None
     }
 }
-

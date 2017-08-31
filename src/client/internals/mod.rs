@@ -31,19 +31,19 @@ impl Clone for SystemClock {
 }
 
 
-pub fn initialize<C: Clock + Clone + Send + 'static>(
-    groups: Vec<ManagedTokenGroup>,
+pub fn initialize<T: Eq + Ord + Send + Sync + Clone + Display + 'static, C: Clock + Clone + Send + 'static>(
+    groups: Vec<ManagedTokenGroup<T>>,
     clock: C,
-) -> (Arc<Inner>, mpsc::Sender<ManagerCommand>) {
+) -> (Arc<Inner<T>>, mpsc::Sender<ManagerCommand<T>>) {
     let mut states = Vec::new();
-    let mut tokens: BTreeMap<TokenName, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)> =
+    let mut tokens: BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)> =
         Default::default();
     let mut idx = 0;
     for group in groups {
         for managed_token in group.managed_tokens {
             let now = Instant::now();
             states.push(Mutex::new(TokenState {
-                name: managed_token.name.clone(),
+                token_id: managed_token.token_id.clone(),
                 scopes: managed_token.scopes,
                 refresh_threshold: group.refresh_threshold,
                 warning_threshold: group.warning_threshold,
@@ -57,11 +57,11 @@ pub fn initialize<C: Clock + Clone + Send + 'static>(
                 index: idx,
                 is_error: true, // unitialized is also an error.
             }));
-            tokens.insert(managed_token.name.clone(), (
+            tokens.insert(managed_token.token_id.clone(), (
                 idx,
                 Mutex::new(
                     Err(ErrorKind::NotInitialized(
-                        managed_token.name,
+                        managed_token.token_id.to_string(),
                     )),
                 ),
             ));
@@ -69,7 +69,7 @@ pub fn initialize<C: Clock + Clone + Send + 'static>(
         }
     }
 
-    let (tx, rx) = mpsc::channel::<ManagerCommand>();
+    let (tx, rx) = mpsc::channel::<ManagerCommand<T>>();
 
     let is_running = AtomicBool::new(true);
 
@@ -80,11 +80,11 @@ pub fn initialize<C: Clock + Clone + Send + 'static>(
     (inner.clone(), tx)
 }
 
-fn start<C: Clock + Clone + Send + 'static>(
-    states: Vec<Mutex<TokenState>>,
-    inner: Arc<Inner>,
-    sender: mpsc::Sender<ManagerCommand>,
-    receiver: mpsc::Receiver<ManagerCommand>,
+fn start<T: Eq + Ord + Send + Sync + Clone + Display + 'static, C: Clock + Clone + Send + 'static>(
+    states: Vec<Mutex<TokenState<T>>>,
+    inner: Arc<Inner<T>>,
+    sender: mpsc::Sender<ManagerCommand<T>>,
+    receiver: mpsc::Receiver<ManagerCommand<T>>,
     clock: C,
 ) {
     let states1 = Arc::new(states);
@@ -114,13 +114,13 @@ fn start<C: Clock + Clone + Send + 'static>(
     });
 }
 
-pub struct Inner {
-    pub tokens: BTreeMap<TokenName, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
+pub struct Inner<T> {
+    pub tokens: BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
     pub is_running: AtomicBool,
 }
 
-pub struct TokenState {
-    name: TokenName,
+pub struct TokenState<T> {
+    token_id: T,
     scopes: Vec<Scope>,
     refresh_threshold: f32,
     warning_threshold: f32,
@@ -135,15 +135,15 @@ pub struct TokenState {
     index: usize,
 }
 
-impl Drop for Inner {
+impl<T> Drop for Inner<T> {
     fn drop(&mut self) {
         self.is_running.store(false, Ordering::Relaxed);
     }
 }
 
-pub enum ManagerCommand {
+pub enum ManagerCommand<T> {
     ScheduledRefresh(usize, Instant),
-    ForceRefresh(TokenName, Instant),
+    ForceRefresh(T, Instant),
     RefreshOnError(usize, Instant),
     Stop,
 }

@@ -6,21 +6,21 @@ use backoff::{Error as BError, ExponentialBackoff, Operation};
 
 use super::*;
 
-pub struct TokenUpdater<'a> {
-    states: &'a [Mutex<TokenState>],
-    tokens: &'a BTreeMap<TokenName, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
-    receiver: mpsc::Receiver<ManagerCommand>,
-    sender: mpsc::Sender<ManagerCommand>,
+pub struct TokenUpdater<'a, T: 'a> {
+    states: &'a [Mutex<TokenState<T>>],
+    tokens: &'a BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
+    receiver: mpsc::Receiver<ManagerCommand<T>>,
+    sender: mpsc::Sender<ManagerCommand<T>>,
     is_running: &'a AtomicBool,
     clock: &'a Clock,
 }
 
-impl<'a> TokenUpdater<'a> {
+impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
     pub fn start(
-        states: &'a [Mutex<TokenState>],
-        tokens: &'a BTreeMap<TokenName, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
-        receiver: mpsc::Receiver<ManagerCommand>,
-        sender: mpsc::Sender<ManagerCommand>,
+        states: &'a [Mutex<TokenState<T>>],
+        tokens: &'a BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
+        receiver: mpsc::Receiver<ManagerCommand<T>>,
+        sender: mpsc::Sender<ManagerCommand<T>>,
         is_running: &'a AtomicBool,
         clock: &'a Clock,
     ) {
@@ -52,28 +52,28 @@ impl<'a> TokenUpdater<'a> {
         info!("Updater loop exited.")
     }
 
-    fn on_command(&self, cmd: ManagerCommand) -> bool {
+    fn on_command(&self, cmd: ManagerCommand<T>) -> bool {
         match cmd {
             ManagerCommand::ScheduledRefresh(idx, timestamp) => {
                 let state = &self.states[idx];
-                let token_name = &state.lock().unwrap().name;
-                debug!("Scheduled refresh for token '{}'", token_name);
-                let &(_, ref token) = self.tokens.get(token_name).unwrap();
+                let token_id = &state.lock().unwrap().token_id;
+                debug!("Scheduled refresh for token '{}'", token_id);
+                let &(_, ref token) = self.tokens.get(token_id).unwrap();
                 self.refresh_token(state, token, timestamp);
                 true
             }
-            ManagerCommand::ForceRefresh(token_name, timestamp) => {
-                info!("Forced refresh for token '{}'", token_name);
-                let &(idx, ref token) = self.tokens.get(&token_name).unwrap();
+            ManagerCommand::ForceRefresh(token_id, timestamp) => {
+                info!("Forced refresh for token '{}'", token_id);
+                let &(idx, ref token) = self.tokens.get(&token_id).unwrap();
                 let state = &self.states[idx];
                 self.refresh_token(state, token, timestamp);
                 true
             }
             ManagerCommand::RefreshOnError(idx, timestamp) => {
                 let state = &self.states[idx];
-                let token_name = &state.lock().unwrap().name;
-                info!("Refresh on error for token '{}'", token_name);
-                let &(_, ref token) = self.tokens.get(token_name).unwrap();
+                let token_id = &state.lock().unwrap().token_id;
+                info!("Refresh on error for token '{}'", token_id);
+                let &(_, ref token) = self.tokens.get(token_id).unwrap();
                 self.refresh_token(state, token, timestamp);
                 true
             }
@@ -86,17 +86,17 @@ impl<'a> TokenUpdater<'a> {
 
     fn refresh_token(
         &self,
-        state: &Mutex<TokenState>,
+        state: &Mutex<TokenState<T>>,
         token: &Mutex<StdResult<AccessToken, ErrorKind>>,
         command_timestamp: Instant,
     ) {
-        let state: &mut TokenState = &mut *state.lock().unwrap();
+        let state: &mut TokenState<T> = &mut *state.lock().unwrap();
         if state.last_touched < command_timestamp {
             let result = call_token_service(&*state.token_service, &state.scopes);
             let do_update = if let Err(ref err) = result {
                 info!(
                     "Scheduling refresh on error for token {}: {}",
-                    state.name,
+                    state.token_id,
                     err
                 );
                 self.sender
@@ -107,7 +107,7 @@ impl<'a> TokenUpdater<'a> {
                     error!(
                         "Received an error for token '{}' and the token is already in error state! \
                     Error: {}",
-                        state.name,
+                        state.token_id,
                         err
                     );
                     true
@@ -115,7 +115,7 @@ impl<'a> TokenUpdater<'a> {
                     error!(
                         "Received an error for token '{}' and the token has already expired! \
                     Error: {}",
-                        state.name,
+                        state.token_id,
                         err
                     );
                     true
@@ -124,7 +124,7 @@ impl<'a> TokenUpdater<'a> {
                         "Received an error for token '{}'. Will not update the \
                     token because it is still valid. \
                     Error: {}",
-                        state.name,
+                        state.token_id,
                         err
                     );
                     false
@@ -140,9 +140,9 @@ impl<'a> TokenUpdater<'a> {
     }
 }
 
-fn update_token(
+fn update_token<T: Display>(
     rsp: TokenServiceResult,
-    state: &mut TokenState,
+    state: &mut TokenState<T>,
     token: &Mutex<StdResult<AccessToken, ErrorKind>>,
     clock: &Clock,
 ) {
@@ -167,7 +167,7 @@ fn update_token(
             info!(
                 "Refreshed token '{}' after {:.2} minutes. New token will expire in {:.2} minutes. \
                 Refresh in {:.2} minutes.",
-                state.name,
+                state.token_id,
                 ((state.expires_at - now).as_secs() as f64 / 60.0),
                 token_response.expires_in.as_secs() as f64 / 60.0,
                 ((state.refresh_at - now).as_secs() as f64 / 60.0),
@@ -192,20 +192,22 @@ fn call_token_service(service: &TokenService, scopes: &[Scope]) -> TokenServiceR
     let mut call = || -> StdResult<TokenServiceResponse, BError<TokenServiceError>> {
         match service.get_token(scopes) {
             Ok(rsp) => Ok(rsp),
-            Err(err @ TokenServiceError::Server(_)) =>{ 
+            Err(err @ TokenServiceError::Server(_)) => {
                 warn!("Call to token service failed: {}", err);
-                Err(BError::Transient(err)) 
-                },
+                Err(BError::Transient(err))
+            }
             Err(err @ TokenServiceError::Connection(_)) => {
                 warn!("Call to token service failed: {}", err);
                 Err(BError::Transient(err))
-                },
+            }
             Err(err @ TokenServiceError::Credentials(_)) => {
                 warn!("Call to token service failed: {}", err);
-                Err(BError::Transient(err))},
+                Err(BError::Transient(err))
+            }
             Err(err @ TokenServiceError::Other(_)) => {
                 warn!("Call to token service failed: {}", err);
-                Err(BError::Transient(err))},
+                Err(BError::Transient(err))
+            }
             Err(err @ TokenServiceError::Parse(_)) => Err(BError::Permanent(err)),
             Err(err @ TokenServiceError::Client(_)) => Err(BError::Permanent(err)),
         }

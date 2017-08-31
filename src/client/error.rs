@@ -4,13 +4,13 @@ error_chain! {
     }
 
     errors {
-        NoToken(t: super::TokenName) {
+        NoToken(t: String) {
             description("no token")
             display("no token: '{}'", t)
         }
-        NotInitialized(t: super::TokenName) {
-            description("invalid url")
-            display("Invalid url: '{}'", t)
+        NotInitialized(t: String) {
+            description("token not initialized")
+            display("Token not initialized: '{}'", t)
         }
         TokenService(error: ::client::tokenservice::TokenServiceError) {
             description("error from tokenservice")

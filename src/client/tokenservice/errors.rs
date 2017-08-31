@@ -18,7 +18,9 @@ impl fmt::Display for TokenServiceError {
             TokenServiceError::Server(ref msg) => write!(f, "Server error: {}", msg),
             TokenServiceError::Connection(ref msg) => write!(f, "Connection error: {}", msg),
             TokenServiceError::Parse(ref msg) => write!(f, "Parse error: {}", msg),
-            TokenServiceError::Credentials(ref inner) => write!(f, "Problem with credentials caused by {}", inner),
+            TokenServiceError::Credentials(ref inner) => {
+                write!(f, "Problem with credentials caused by {}", inner)
+            }
             TokenServiceError::Other(ref msg) => write!(f, "Other error {}", msg),
         }
     }
@@ -39,7 +41,7 @@ impl Error for TokenServiceError {
     fn cause(&self) -> Option<&Error> {
         match *self {
             TokenServiceError::Credentials(ref inner) => Some(inner),
-            _ => None
+            _ => None,
         }
     }
 }

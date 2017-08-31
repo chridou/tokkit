@@ -1,19 +1,19 @@
 use super::*;
 use std::sync::mpsc;
 
-pub struct RefreshScheduler<'a> {
-    states: &'a [Mutex<TokenState>],
-    sender: &'a mpsc::Sender<ManagerCommand>,
+pub struct RefreshScheduler<'a, T: 'a> {
+    states: &'a [Mutex<TokenState<T>>],
+    sender: &'a mpsc::Sender<ManagerCommand<T>>,
     min_notification_interval: Duration,
     min_cycle_dur: Duration,
     is_running: &'a AtomicBool,
     clock: &'a Clock,
 }
 
-impl<'a> RefreshScheduler<'a> {
+impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
     pub fn start(
-        states: &'a [Mutex<TokenState>],
-        sender: &'a mpsc::Sender<ManagerCommand>,
+        states: &'a [Mutex<TokenState<T>>],
+        sender: &'a mpsc::Sender<ManagerCommand<T>>,
         min_cycle_dur: Duration,
         min_notification_interval: Duration,
         is_running: &'a AtomicBool,
@@ -69,23 +69,23 @@ impl<'a> RefreshScheduler<'a> {
         }
     }
 
-    fn check_notifications(&self, state: &mut TokenState) {
+    fn check_notifications(&self, state: &mut TokenState<T>) {
         let now = self.clock.now();
         if now - state.last_notification_at >= self.min_notification_interval {
             let notified = if state.is_error {
-                warn!("Token '{}' is in error state.", state.name);
+                warn!("Token '{}' is in error state.", state.token_id);
                 true
             } else if state.expires_at < now {
                 warn!(
                     "Token '{}' expired {:.2} minutes ago.",
-                    state.name,
+                    state.token_id,
                     (now - state.expires_at).as_secs() as f64 / 60.0
                 );
                 true
             } else if state.warn_at < now {
                 warn!(
                     "Token '{}' expires in {:.2} minutes.",
-                    state.name,
+                    state.token_id,
                     (state.expires_at - now).as_secs() as f64 / 60.0
                 );
                 true
