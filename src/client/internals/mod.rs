@@ -30,8 +30,10 @@ impl Clone for SystemClock {
     }
 }
 
-
-pub fn initialize<T: Eq + Ord + Send + Sync + Clone + Display + 'static, C: Clock + Clone + Send + 'static>(
+pub fn initialize<
+    T: Eq + Ord + Send + Sync + Clone + Display + 'static,
+    C: Clock + Clone + Send + 'static,
+>(
     groups: Vec<ManagedTokenGroup<T>>,
     clock: C,
 ) -> (Arc<Inner<T>>, mpsc::Sender<ManagerCommand<T>>) {
@@ -59,11 +61,13 @@ pub fn initialize<T: Eq + Ord + Send + Sync + Clone + Display + 'static, C: Cloc
             }));
             tokens.insert(managed_token.token_id.clone(), (
                 idx,
-                Mutex::new(
-                    Err(ErrorKind::NotInitialized(
-                        managed_token.token_id.to_string(),
-                    )),
-                ),
+                Mutex::new(Err(
+                    ErrorKind::NotInitialized(
+                        managed_token
+                            .token_id
+                            .to_string(),
+                    ),
+                )),
             ));
             idx += 1;
         }
@@ -80,7 +84,10 @@ pub fn initialize<T: Eq + Ord + Send + Sync + Clone + Display + 'static, C: Cloc
     (inner.clone(), tx)
 }
 
-fn start<T: Eq + Ord + Send + Sync + Clone + Display + 'static, C: Clock + Clone + Send + 'static>(
+fn start<
+    T: Eq + Ord + Send + Sync + Clone + Display + 'static,
+    C: Clock + Clone + Send + 'static,
+>(
     states: Vec<Mutex<TokenState<T>>>,
     inner: Arc<Inner<T>>,
     sender: mpsc::Sender<ManagerCommand<T>>,

@@ -5,6 +5,7 @@ use std::thread;
 use std::time::Instant;
 use std::result::Result as StdResult;
 use std::fmt::Display;
+use std::collections::BTreeMap;
 use {AccessToken, Scope};
 
 pub mod error;
@@ -14,7 +15,7 @@ mod internals;
 use self::error::*;
 use self::tokenservice::*;
 use self::internals::Inner;
-use super::InitializationError;
+use super::{InitializationError, InitializationResult};
 
 pub struct ManagedTokenBuilder<T> {
     pub token_id: Option<T>,
@@ -67,16 +68,15 @@ pub struct ManagedToken<T> {
     scopes: Vec<Scope>,
 }
 
-pub struct ManagedTokenGroupBuilder<T: Eq + Send + Clone + Display,S: TokenService + 'static 
-> {
+pub struct ManagedTokenGroupBuilder<T: Eq + Send + Clone + Display, S: TokenService + 'static> {
     token_service: Option<Arc<S>>,
     managed_tokens: Vec<ManagedToken<T>>,
     refresh_threshold: f32,
     warning_threshold: f32,
 }
 
-impl<T: Eq + Send + Clone + Display, S: TokenService + Send + Sync + 'static,
-> ManagedTokenGroupBuilder<T, S> {
+impl<T: Eq + Send + Clone + Display, S: TokenService + Send + Sync + 'static>
+    ManagedTokenGroupBuilder<T, S> {
     pub fn with_token_service(&mut self, token_service: S) -> &mut Self {
         self.token_service = Some(Arc::new(token_service));
         self
@@ -103,6 +103,15 @@ impl<T: Eq + Send + Clone + Display, S: TokenService + Send + Sync + 'static,
     ) -> StdResult<&mut Self, InitializationError> {
         let managed_token = builder.build()?;
         Ok(self.with_managed_token(managed_token))
+    }
+
+    pub fn easy(token_id: T, scopes: Vec<Scope>, token_service: S) -> Self {
+        let managed_token = ManagedToken { token_id, scopes };
+        let mut builder = Self::default();
+        builder.with_managed_token(managed_token);
+        builder.with_token_service(token_service);
+
+        builder
     }
 
     pub fn build(self) -> StdResult<ManagedTokenGroup<T>, InitializationError> {
@@ -142,8 +151,8 @@ impl<T: Eq + Send + Clone + Display, S: TokenService + Send + Sync + 'static,
     }
 }
 
-impl<T: Eq + Send + Clone + Display,
-S: TokenService + 'static> Default for ManagedTokenGroupBuilder<T, S> {
+impl<T: Eq + Send + Clone + Display, S: TokenService + 'static> Default
+    for ManagedTokenGroupBuilder<T, S> {
     fn default() -> Self {
         ManagedTokenGroupBuilder {
             token_service: Default::default(),
@@ -178,7 +187,7 @@ pub struct TokenProvider<T> {
     sender: Sender<internals::ManagerCommand<T>>,
 }
 
-impl<T: Eq  + Ord + Clone + Display> ProvidesTokens<T> for TokenProvider<T> {
+impl<T: Eq + Ord + Clone + Display> ProvidesTokens<T> for TokenProvider<T> {
     fn get_token(&self, token_id: &T) -> Result<AccessToken> {
         match self.inner.tokens.get(&token_id) {
             Some(&(_, ref guard)) => {
@@ -217,7 +226,7 @@ pub struct PinnedTokenProvider<T> {
     token_id: T,
 }
 
-impl<T: Eq  + Ord + Clone + Display> ProvidesPinnedToken for PinnedTokenProvider<T> {
+impl<T: Eq + Ord + Clone + Display> ProvidesPinnedToken for PinnedTokenProvider<T> {
     fn get_token(&self) -> Result<AccessToken> {
         self.token_provider.get_token(&self.token_id)
     }
@@ -230,8 +239,25 @@ impl<T: Eq  + Ord + Clone + Display> ProvidesPinnedToken for PinnedTokenProvider
 pub struct TokenManager;
 
 impl TokenManager {
-    pub fn start<T: Eq + Ord + Send + Sync + Clone + Display + 'static>(groups: Vec<ManagedTokenGroup<T>>) -> TokenProvider<T> {
+    pub fn start<T: Eq + Ord + Send + Sync + Clone + Display + 'static>(
+        groups: Vec<ManagedTokenGroup<T>>,
+    ) -> InitializationResult<TokenProvider<T>> {
+        {
+            let mut seen = BTreeMap::default();
+            for group in &groups {
+                for managed_token in &group.managed_tokens {
+                    let token_id = &managed_token.token_id;
+                    if seen.contains_key(token_id) {
+                        bail!(InitializationError(
+                            format!("Token id '{}' is used more than once.", token_id),
+                        ))
+                    } else {
+                        seen.insert(token_id, ());
+                    }
+                }
+            }
+        }
         let (inner, sender) = internals::initialize(groups, internals::SystemClock);
-        TokenProvider { inner, sender }
+        Ok(TokenProvider { inner, sender })
     }
 }

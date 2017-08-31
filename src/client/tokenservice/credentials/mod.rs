@@ -37,5 +37,3 @@ pub struct SplitFileCredentialsProvider {
     client_file_path: String,
     user_file_path: String,
 }
-
-
