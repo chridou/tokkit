@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::sync::mpsc;
-use std::time::{Instant, Duration};
 use backoff::{Error as BError, ExponentialBackoff, Operation};
 
 use super::*;

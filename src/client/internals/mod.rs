@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc;
-use std::time::{SystemTime, Duration, UNIX_EPOCH};
+use std::time::{Duration, UNIX_EPOCH};
 
 mod request_scheduler;
 mod token_updater;
