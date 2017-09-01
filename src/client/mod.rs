@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::thread;
-use std::time::Instant;
 use std::result::Result as StdResult;
 use std::fmt::Display;
 use std::collections::BTreeMap;

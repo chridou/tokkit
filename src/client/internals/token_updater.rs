@@ -99,7 +99,10 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                     err
                 );
                 self.sender
-                    .send(ManagerCommand::RefreshOnError(state.index, self.clock.now()))
+                    .send(ManagerCommand::RefreshOnError(
+                        state.index,
+                        self.clock.now(),
+                    ))
                     .unwrap();
 
                 if state.is_error {
@@ -154,10 +157,8 @@ fn update_token<T: Display>(
             let expires_in_ms = millis_from_duration(token_response.expires_in);
             state.last_touched = now;
             state.expires_at = now + expires_in_ms;
-            state.refresh_at = now +
-                (expires_in_ms as f32 * state.refresh_threshold) as u64;
-            state.warn_at = now +
-                (expires_in_ms as f32 * state.warning_threshold) as u64;
+            state.refresh_at = now + (expires_in_ms as f32 * state.refresh_threshold) as u64;
+            state.warn_at = now + (expires_in_ms as f32 * state.warning_threshold) as u64;
             state.is_initialized = true;
             state.is_error = false;
             info!(

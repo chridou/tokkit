@@ -42,8 +42,8 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
             let elapsed = elapsed_millis_from(start, self.clock);
             let sleep_dur_ms = minus_millis(self.min_cycle_dur_ms, elapsed);
             if sleep_dur_ms > 0 {
-            let sleep_dur = Duration::from_millis(sleep_dur_ms);
-            thread::sleep(sleep_dur);
+                let sleep_dur = Duration::from_millis(sleep_dur_ms);
+                thread::sleep(sleep_dur);
             }
         }
         info!("Scheduler loop exited.")
@@ -72,7 +72,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
 
     fn check_notifications(&self, state: &mut TokenState<T>) {
         let now = self.clock.now();
-        if now - state.last_notification_at >= self.min_notification_interval_ms  {
+        if now - state.last_notification_at >= self.min_notification_interval_ms {
             let notified = if state.is_error {
                 warn!("Token '{}' is in error state.", state.token_id);
                 true
@@ -115,7 +115,7 @@ mod test {
 
     fn create_token_states() -> Vec<TokenState<&'static str>> {
         let mut states = Vec::default();
-        
+
         states
     }
 

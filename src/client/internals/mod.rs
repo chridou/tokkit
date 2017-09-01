@@ -11,50 +11,6 @@ use super::*;
 
 pub type EpochMillis = u64;
 
-pub trait Clock {
-    fn now(&self) -> EpochMillis;
-}
-
-pub struct SystemClock;
-
-impl Clock for SystemClock {
-    fn now(&self) -> EpochMillis {
-        millis_from_duration(UNIX_EPOCH.elapsed().unwrap())
-    }
-}
-
-impl Clone for SystemClock {
-    fn clone(&self) -> Self
-    where
-        Self: Sized,
-    {
-        SystemClock
-    }
-}
-
-fn diff_millis(start_millis: u64, end_millis: u64) -> u64 {
-    if start_millis > end_millis {
-        0
-    } else {
-        end_millis - start_millis
-    }
-}
-
-fn minus_millis(from: u64, subtract: u64) -> u64 {
-    if subtract > from {
-        0
-    } else {
-        from - subtract
-    }
-}
-
-fn elapsed_millis_from(start_millis: u64, clock: &Clock) -> u64 {
-    diff_millis(start_millis, clock.now())
-}
-
-fn millis_from_duration(d: Duration) -> u64 {
-    (d.as_secs() * 1000) + (d.subsec_nanos()  / 1_000_000) as u64
-}
 
 pub fn initialize<
     T: Eq + Ord + Send + Sync + Clone + Display + 'static,
@@ -63,13 +19,28 @@ pub fn initialize<
     groups: Vec<ManagedTokenGroup<T>>,
     clock: C,
 ) -> (Arc<Inner<T>>, mpsc::Sender<ManagerCommand<T>>) {
+    let mut tokens = create_tokens(&groups);
+    let states = create_states(groups, clock.now());
+
+    let (tx, rx) = mpsc::channel::<ManagerCommand<T>>();
+
+    let is_running = AtomicBool::new(true);
+
+    let inner = Arc::new(Inner { tokens, is_running });
+
+    start(states, inner.clone(), tx.clone(), rx, clock);
+
+    (inner.clone(), tx)
+}
+
+fn create_states<T: Clone>(
+    groups: Vec<ManagedTokenGroup<T>>,
+    now: EpochMillis,
+) -> Vec<Mutex<TokenState<T>>> {
     let mut states = Vec::new();
-    let mut tokens: BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)> =
-        Default::default();
     let mut idx = 0;
     for group in groups {
         for managed_token in group.managed_tokens {
-            let now = clock.now();
             states.push(Mutex::new(TokenState {
                 token_id: managed_token.token_id.clone(),
                 scopes: managed_token.scopes,
@@ -85,6 +56,20 @@ pub fn initialize<
                 index: idx,
                 is_error: true, // unitialized is also an error.
             }));
+            idx += 1;
+        }
+    }
+    states
+}
+
+fn create_tokens<T: Eq + Ord + Clone + Display>(
+    groups: &[ManagedTokenGroup<T>],
+) -> BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)> {
+    let mut tokens: BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)> =
+        Default::default();
+    let mut idx = 0;
+    for group in groups {
+        for managed_token in &group.managed_tokens {
             tokens.insert(managed_token.token_id.clone(), (
                 idx,
                 Mutex::new(Err(
@@ -98,16 +83,7 @@ pub fn initialize<
             idx += 1;
         }
     }
-
-    let (tx, rx) = mpsc::channel::<ManagerCommand<T>>();
-
-    let is_running = AtomicBool::new(true);
-
-    let inner = Arc::new(Inner { tokens, is_running });
-
-    start(states, inner.clone(), tx.clone(), rx, clock);
-
-    (inner.clone(), tx)
+    tokens
 }
 
 fn start<
@@ -179,4 +155,44 @@ pub enum ManagerCommand<T> {
     ForceRefresh(T, u64),
     RefreshOnError(usize, u64),
     Stop,
+}
+pub trait Clock {
+    fn now(&self) -> EpochMillis;
+}
+
+pub struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now(&self) -> EpochMillis {
+        millis_from_duration(UNIX_EPOCH.elapsed().unwrap())
+    }
+}
+
+impl Clone for SystemClock {
+    fn clone(&self) -> Self
+    where
+        Self: Sized,
+    {
+        SystemClock
+    }
+}
+
+fn diff_millis(start_millis: u64, end_millis: u64) -> u64 {
+    if start_millis > end_millis {
+        0
+    } else {
+        end_millis - start_millis
+    }
+}
+
+fn minus_millis(from: u64, subtract: u64) -> u64 {
+    if subtract > from { 0 } else { from - subtract }
+}
+
+fn elapsed_millis_from(start_millis: u64, clock: &Clock) -> u64 {
+    diff_millis(start_millis, clock.now())
+}
+
+fn millis_from_duration(d: Duration) -> u64 {
+    (d.as_secs() * 1000) + (d.subsec_nanos() / 1_000_000) as u64
 }
