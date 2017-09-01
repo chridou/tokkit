@@ -88,7 +88,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
         &self,
         state: &Mutex<TokenState<T>>,
         token: &Mutex<StdResult<AccessToken, ErrorKind>>,
-        command_timestamp: Instant,
+        command_timestamp: u64,
     ) {
         let state: &mut TokenState<T> = &mut *state.lock().unwrap();
         if state.last_touched < command_timestamp {
@@ -100,7 +100,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                     err
                 );
                 self.sender
-                    .send(ManagerCommand::RefreshOnError(state.index, Instant::now()))
+                    .send(ManagerCommand::RefreshOnError(state.index, self.clock.now()))
                     .unwrap();
 
                 if state.is_error {
@@ -111,7 +111,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                         err
                     );
                     true
-                } else if state.expires_at < Instant::now() {
+                } else if state.expires_at < self.clock.now() {
                     error!(
                         "Received an error for token '{}' and the token has already expired! \
                     Error: {}",
@@ -152,25 +152,22 @@ fn update_token<T: Display>(
                 *token.lock().unwrap() = Ok(token_response.token)
             };
             let now = clock.now();
+            let expires_in_ms = millis_from_duration(token_response.expires_in);
             state.last_touched = now;
-            state.expires_at = now + token_response.expires_in;
+            state.expires_at = now + expires_in_ms;
             state.refresh_at = now +
-                Duration::from_secs(
-                    (token_response.expires_in.as_secs() as f32 * state.refresh_threshold) as u64,
-                );
+                (expires_in_ms as f32 * state.refresh_threshold) as u64;
             state.warn_at = now +
-                Duration::from_secs(
-                    (token_response.expires_in.as_secs() as f32 * state.warning_threshold) as u64,
-                );
+                (expires_in_ms as f32 * state.warning_threshold) as u64;
             state.is_initialized = true;
             state.is_error = false;
             info!(
                 "Refreshed token '{}' after {:.2} minutes. New token will expire in {:.2} minutes. \
                 Refresh in {:.2} minutes.",
                 state.token_id,
-                ((state.expires_at - now).as_secs() as f64 / 60.0),
+                diff_millis(state.expires_at, now) as f64 / (60.0 * 1000.0),
                 token_response.expires_in.as_secs() as f64 / 60.0,
-                ((state.refresh_at - now).as_secs() as f64 / 60.0),
+                diff_millis(state.refresh_at, now) as f64 / (60.0 * 1000.0),
             );
         }
         Err(err) => {

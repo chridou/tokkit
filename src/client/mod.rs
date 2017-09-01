@@ -204,7 +204,7 @@ impl<T: Eq + Ord + Clone + Display> ProvidesTokens<T> for TokenProvider<T> {
         self.sender
             .send(internals::ManagerCommand::ForceRefresh(
                 name.clone(),
-                Instant::now(),
+                internals::Clock::now(&internals::SystemClock),
             ))
             .unwrap()
     }

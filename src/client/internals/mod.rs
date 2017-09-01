@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc;
-use std::time::{Instant, Duration};
+use std::time::{SystemTime, Duration, UNIX_EPOCH};
 
 mod request_scheduler;
 mod token_updater;
@@ -9,15 +9,17 @@ mod token_updater;
 use client::tokenservice::TokenService;
 use super::*;
 
+pub type EpochMillis = u64;
+
 pub trait Clock {
-    fn now(&self) -> Instant;
+    fn now(&self) -> EpochMillis;
 }
 
 pub struct SystemClock;
 
 impl Clock for SystemClock {
-    fn now(&self) -> Instant {
-        Instant::now()
+    fn now(&self) -> EpochMillis {
+        millis_from_duration(UNIX_EPOCH.elapsed().unwrap())
     }
 }
 
@@ -28,6 +30,30 @@ impl Clone for SystemClock {
     {
         SystemClock
     }
+}
+
+fn diff_millis(start_millis: u64, end_millis: u64) -> u64 {
+    if start_millis > end_millis {
+        0
+    } else {
+        end_millis - start_millis
+    }
+}
+
+fn minus_millis(from: u64, subtract: u64) -> u64 {
+    if subtract > from {
+        0
+    } else {
+        from - subtract
+    }
+}
+
+fn elapsed_millis_from(start_millis: u64, clock: &Clock) -> u64 {
+    diff_millis(start_millis, clock.now())
+}
+
+fn millis_from_duration(d: Duration) -> u64 {
+    (d.as_secs() * 1000) + (d.subsec_nanos()  / 1_000_000) as u64
 }
 
 pub fn initialize<
@@ -43,7 +69,7 @@ pub fn initialize<
     let mut idx = 0;
     for group in groups {
         for managed_token in group.managed_tokens {
-            let now = Instant::now();
+            let now = clock.now();
             states.push(Mutex::new(TokenState {
                 token_id: managed_token.token_id.clone(),
                 scopes: managed_token.scopes,
@@ -53,7 +79,7 @@ pub fn initialize<
                 refresh_at: now,
                 warn_at: now,
                 expires_at: now,
-                last_notification_at: now - Duration::from_secs(60 * 60 * 24),
+                last_notification_at: now - 1_000_000,
                 token_service: group.token_service.clone(),
                 is_initialized: false,
                 index: idx,
@@ -103,8 +129,8 @@ fn start<
         request_scheduler::RefreshScheduler::start(
             &*states1,
             &sender1,
-            Duration::from_secs(30),
-            Duration::from_secs(60),
+            30_000,
+            60_000,
             &inner1.is_running,
             &clock1,
         )
@@ -131,11 +157,11 @@ pub struct TokenState<T> {
     scopes: Vec<Scope>,
     refresh_threshold: f32,
     warning_threshold: f32,
-    last_touched: Instant,
-    refresh_at: Instant,
-    warn_at: Instant,
-    expires_at: Instant,
-    last_notification_at: Instant,
+    last_touched: EpochMillis,
+    refresh_at: EpochMillis,
+    warn_at: EpochMillis,
+    expires_at: EpochMillis,
+    last_notification_at: EpochMillis,
     token_service: Arc<TokenService + Send + Sync + 'static>,
     is_initialized: bool,
     is_error: bool,
@@ -149,8 +175,8 @@ impl<T> Drop for Inner<T> {
 }
 
 pub enum ManagerCommand<T> {
-    ScheduledRefresh(usize, Instant),
-    ForceRefresh(T, Instant),
-    RefreshOnError(usize, Instant),
+    ScheduledRefresh(usize, u64),
+    ForceRefresh(T, u64),
+    RefreshOnError(usize, u64),
     Stop,
 }
