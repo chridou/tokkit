@@ -72,7 +72,12 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
 
     fn check_notifications(&self, state: &mut TokenState<T>) {
         let now = self.clock.now();
-        if now - state.last_notification_at >= self.min_notification_interval_ms {
+        let notify = if let Some(last_notified) = state.last_notification_at {
+            now - last_notified >= self.min_notification_interval_ms
+        } else {
+            true
+        };
+        if notify {
             let notified = if state.is_error {
                 warn!("Token '{}' is in error state.", state.token_id);
                 true
@@ -94,7 +99,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
                 false
             };
             if notified {
-                state.last_notification_at = now;
+                state.last_notification_at = Some(now);
             }
         }
     }

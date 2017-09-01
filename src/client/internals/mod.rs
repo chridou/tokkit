@@ -19,7 +19,7 @@ pub fn initialize<
     groups: Vec<ManagedTokenGroup<T>>,
     clock: C,
 ) -> (Arc<Inner<T>>, mpsc::Sender<ManagerCommand<T>>) {
-    let mut tokens = create_tokens(&groups);
+    let tokens = create_tokens(&groups);
     let states = create_states(groups, clock.now());
 
     let (tx, rx) = mpsc::channel::<ManagerCommand<T>>();
@@ -50,7 +50,7 @@ fn create_states<T: Clone>(
                 refresh_at: now,
                 warn_at: now,
                 expires_at: now,
-                last_notification_at: now - 1_000_000,
+                last_notification_at: None,
                 token_service: group.token_service.clone(),
                 is_initialized: false,
                 index: idx,
@@ -137,7 +137,7 @@ pub struct TokenState<T> {
     refresh_at: EpochMillis,
     warn_at: EpochMillis,
     expires_at: EpochMillis,
-    last_notification_at: EpochMillis,
+    last_notification_at: Option<EpochMillis>,
     token_service: Arc<TokenService + Send + Sync + 'static>,
     is_initialized: bool,
     is_error: bool,

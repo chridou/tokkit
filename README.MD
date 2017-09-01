@@ -10,7 +10,8 @@ The documentation is available [online](https://docs.rs/tokkit).
 
 ## Verify Access Tokens
 
-`tokkit` contains a module `token_info` for protected resources to verify access tokens.
+`tokkit` contains a module `token_info` for protected resources to verify access 
+tokens via a token introspection service.
 
 ```rust,no_run
 use tokkit::*;
