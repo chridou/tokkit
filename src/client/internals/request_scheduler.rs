@@ -107,21 +107,35 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
 
 #[cfg(test)]
 mod test {
+    use std::cell::Cell;
     use client::*;
     use super::*;
 
-    struct DummyTokenService;
+    struct DummyTokenService {
+        counter: Cell<u32>,
+    }
 
-    impl TokenService for DummyTokenService {
-        fn get_token(&self, scopes: &[Scope]) -> TokenServiceResult {
-            unimplemented!()
+    impl DummyTokenService {
+        pub fn new() -> Self {
+            DummyTokenService { counter: Cell::new(0) }
         }
     }
 
-    fn create_token_states() -> Vec<TokenState<&'static str>> {
-        let mut states = Vec::default();
+    impl TokenService for DummyTokenService {
+        fn get_token(&self, scopes: &[Scope]) -> TokenServiceResult {
+            self.counter.set(self.counter.get()+ 1);
+            Ok(TokenServiceResponse {
+                token: AccessToken::new(self.counter.get().to_string()),
+                expires_in: Duration::from_secs(1),
+            })
+        }
+    }
 
-        states
+    fn create_token_states() -> Vec<Mutex<TokenState<&'static str>>> {
+        let mut groups = Vec::default();
+        groups.push(ManagedTokenBuilder::easy("token", Vec::new(), DummyTokenService::new())
+        .build().unwrap());
+        create_states(groups, 0)
     }
 
     #[test]
