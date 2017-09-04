@@ -104,7 +104,7 @@ impl<T: Eq + Send + Clone + Display, S: TokenService + Send + Sync + 'static>
         Ok(self.with_managed_token(managed_token))
     }
 
-    pub fn easy(token_id: T, scopes: Vec<Scope>, token_service: S) -> Self {
+    pub fn single_token(token_id: T, scopes: Vec<Scope>, token_service: S) -> Self {
         let managed_token = ManagedToken { token_id, scopes };
         let mut builder = Self::default();
         builder.with_managed_token(managed_token);

@@ -102,14 +102,15 @@ fn start<
     let sender1 = sender.clone();
     let clock1 = clock.clone();
     thread::spawn(move || {
-        request_scheduler::RefreshScheduler::start(
+        let scheduler = request_scheduler::RefreshScheduler::new(
             &*states1,
             &sender1,
             30_000,
             60_000,
             &inner1.is_running,
             &clock1,
-        )
+        );
+        scheduler.start();
     });
     thread::spawn(move || {
         token_updater::TokenUpdater::start(
@@ -150,6 +151,7 @@ impl<T> Drop for Inner<T> {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub enum ManagerCommand<T> {
     ScheduledRefresh(usize, u64),
     ForceRefresh(T, u64),

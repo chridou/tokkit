@@ -13,23 +13,26 @@ pub struct RefreshScheduler<'a, T: 'a> {
 }
 
 impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
-    pub fn start(
+    pub fn new(
         states: &'a [Mutex<TokenState<T>>],
         sender: &'a mpsc::Sender<ManagerCommand<T>>,
         min_cycle_dur_ms: u64,
         min_notification_interval_ms: u64,
         is_running: &'a AtomicBool,
         clock: &'a Clock,
-    ) {
-        let scheduler = RefreshScheduler {
+    ) -> Self {
+        RefreshScheduler {
             states,
             sender,
             min_notification_interval_ms,
             min_cycle_dur_ms,
             is_running,
             clock,
-        };
-        scheduler.run_scheduler_loop();
+        }
+    }
+
+    pub fn start(&self) {
+        self.run_scheduler_loop();
     }
 
     fn run_scheduler_loop(&self) {
@@ -107,39 +110,145 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
 
 #[cfg(test)]
 mod test {
+    use std::sync::{Arc, Mutex};
     use std::cell::Cell;
+    use std::rc::Rc;
+    use std::sync::mpsc;
+    use std::sync::atomic::AtomicBool;
     use client::*;
     use super::*;
 
+    #[derive(Clone)]
+    struct TestClock {
+        time: Rc<Cell<u64>>,
+    }
+
+    impl TestClock {
+        pub fn new() -> Self {
+            TestClock { time: Rc::new(Cell::new(0)) }
+        }
+
+        pub fn inc(&self, by_ms: u64) {
+            let past = self.time.get();
+            self.time.set(past + by_ms);
+        }
+    }
+
+    impl Clock for TestClock {
+        fn now(&self) -> u64 {
+            self.time.get()
+        }
+    }
+
     struct DummyTokenService {
-        counter: Cell<u32>,
+        counter: Arc<Mutex<u32>>,
     }
 
     impl DummyTokenService {
         pub fn new() -> Self {
-            DummyTokenService { counter: Cell::new(0) }
+            DummyTokenService { counter: Arc::new(Mutex::new(0)) }
         }
     }
 
     impl TokenService for DummyTokenService {
         fn get_token(&self, scopes: &[Scope]) -> TokenServiceResult {
-            self.counter.set(self.counter.get()+ 1);
-            Ok(TokenServiceResponse {
-                token: AccessToken::new(self.counter.get().to_string()),
+            let c: &mut u32 = &mut *self.counter.lock().unwrap();
+            let res = Ok(TokenServiceResponse {
+                token: AccessToken::new(c.to_string()),
                 expires_in: Duration::from_secs(1),
-            })
+            });
+            *c += 1;
+            res
         }
     }
 
     fn create_token_states() -> Vec<Mutex<TokenState<&'static str>>> {
         let mut groups = Vec::default();
-        groups.push(ManagedTokenBuilder::easy("token", Vec::new(), DummyTokenService::new())
-        .build().unwrap());
+        groups.push(
+            ManagedTokenGroupBuilder::single_token(
+                "token",
+                vec![Scope::new("scope")],
+                DummyTokenService::new(),
+            ).build()
+                .unwrap(),
+        );
         create_states(groups, 0)
     }
 
     #[test]
-    fn test() {
+    fn clock_test() {
+        let clock1 = TestClock::new();
+        let clock2 = clock1.clone();
+        clock1.inc(100);
+        assert_eq!(100, clock2.now());
+    }
+
+    #[test]
+    fn iniitial_state_is_correct() {
         let states = create_token_states();
+        let state = states[0].lock().unwrap();
+        assert_eq!("token", state.token_id);
+        assert_eq!(vec![Scope::new("scope")], state.scopes);
+        assert_eq!(0.75, state.refresh_threshold);
+        assert_eq!(0.85, state.warning_threshold);
+        assert_eq!(0, state.refresh_at);
+        assert_eq!(0, state.warn_at);
+        assert_eq!(0, state.expires_at);
+        assert_eq!(None, state.last_notification_at);
+        assert_eq!(false, state.is_initialized);
+        assert_eq!(true, state.is_error);
+        assert_eq!(0, state.index);
+    }
+
+    #[test]
+    fn scheduler_sends_initial_refresh() {
+        let (tx, rx) = mpsc::channel();
+        let is_running = AtomicBool::new(true);
+        let clock = TestClock::new();
+        let states = create_token_states();
+
+        let scheduler = RefreshScheduler::new(&states, &tx, 0, 1000, &is_running, &clock);
+
+        scheduler.do_a_scheduling_round();
+
+        {
+            let state = states[0].lock().unwrap();
+            assert_eq!("token", state.token_id);
+            assert_eq!(vec![Scope::new("scope")], state.scopes);
+            assert_eq!(0.75, state.refresh_threshold);
+            assert_eq!(0.85, state.warning_threshold);
+            assert_eq!(0, state.refresh_at);
+            assert_eq!(0, state.warn_at);
+            assert_eq!(0, state.expires_at);
+            assert_eq!(None, state.last_notification_at);
+            assert_eq!(false, state.is_initialized);
+            assert_eq!(true, state.is_error);
+            assert_eq!(0, state.index);
+        }
+
+        let msg = rx.recv().unwrap();
+        assert_eq!(ManagerCommand::ScheduledRefresh(0, 0), msg);
+
+        clock.inc(1000);
+
+        scheduler.do_a_scheduling_round();
+
+        {
+            let state = states[0].lock().unwrap();
+            assert_eq!("token", state.token_id);
+            assert_eq!(vec![Scope::new("scope")], state.scopes);
+            assert_eq!(0.75, state.refresh_threshold);
+            assert_eq!(0.85, state.warning_threshold);
+            assert_eq!(0, state.refresh_at);
+            assert_eq!(0, state.warn_at);
+            assert_eq!(0, state.expires_at);
+            assert_eq!(None, state.last_notification_at);
+            assert_eq!(false, state.is_initialized);
+            assert_eq!(true, state.is_error);
+            assert_eq!(0, state.index);
+        }
+
+        let msg = rx.recv().unwrap();
+        assert_eq!(ManagerCommand::ScheduledRefresh(0, 1000), msg);
     }
 }
