@@ -70,16 +70,15 @@ fn create_tokens<T: Eq + Ord + Clone + Display>(
     let mut idx = 0;
     for group in groups {
         for managed_token in &group.managed_tokens {
-            tokens.insert(managed_token.token_id.clone(), (
-                idx,
-                Mutex::new(Err(
-                    ErrorKind::NotInitialized(
-                        managed_token
-                            .token_id
-                            .to_string(),
-                    ),
-                )),
-            ));
+            tokens.insert(
+                managed_token.token_id.clone(),
+                (
+                    idx,
+                    Mutex::new(Err(ErrorKind::NotInitialized(
+                        managed_token.token_id.to_string(),
+                    ))),
+                ),
+            );
             idx += 1;
         }
     }
@@ -113,14 +112,15 @@ fn start<
         scheduler.start();
     });
     thread::spawn(move || {
-        token_updater::TokenUpdater::start(
+        let token_updater = token_updater::TokenUpdater::new(
             &*states2,
             &inner.tokens,
             receiver,
             sender,
             &inner.is_running,
             &clock,
-        )
+        );
+        token_updater.start();
     });
 }
 
@@ -188,7 +188,11 @@ fn diff_millis(start_millis: u64, end_millis: u64) -> u64 {
 }
 
 fn minus_millis(from: u64, subtract: u64) -> u64 {
-    if subtract > from { 0 } else { from - subtract }
+    if subtract > from {
+        0
+    } else {
+        from - subtract
+    }
 }
 
 fn elapsed_millis_from(start_millis: u64, clock: &Clock) -> u64 {

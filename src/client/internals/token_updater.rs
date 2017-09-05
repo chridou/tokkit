@@ -15,14 +15,14 @@ pub struct TokenUpdater<'a, T: 'a> {
 }
 
 impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
-    pub fn start(
+    pub fn new(
         states: &'a [Mutex<TokenState<T>>],
         tokens: &'a BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
         receiver: mpsc::Receiver<ManagerCommand<T>>,
         sender: mpsc::Sender<ManagerCommand<T>>,
         is_running: &'a AtomicBool,
         clock: &'a Clock,
-    ) {
+    ) -> Self {
         TokenUpdater {
             states,
             tokens,
@@ -30,25 +30,33 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
             sender,
             is_running,
             clock,
-        }.run_updater_loop();
+        }
+    }
+
+    pub fn start(&self) {
+        self.run_updater_loop();
     }
 
     fn run_updater_loop(&self) {
         debug!("Starting updater loop");
         while self.is_running.load(Ordering::Relaxed) {
-            match self.receiver.recv() {
-                Ok(cmd) => {
-                    if !self.on_command(cmd) {
-                        break;
-                    }
-                }
+            match self.next_command() {
                 Err(err) => {
-                    error!("Failed to receive command from channel: {}", err);
+                    error!("{}", err);
                     break;
                 }
+                Ok(true) => {}
+                Ok(false) => break,
             }
         }
         info!("Updater loop exited.")
+    }
+
+    fn next_command(&self) -> StdResult<bool, String> {
+        match self.receiver.recv() {
+            Ok(cmd) => Ok(self.on_command(cmd)),
+            Err(err) => Err(format!("Failed to receive command from channel: {}", err)),
+        }
     }
 
     fn on_command(&self, cmd: ManagerCommand<T>) -> bool {
@@ -108,7 +116,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                 if state.is_error {
                     error!(
                         "Received an error for token '{}' and the token is already in error state! \
-                    Error: {}",
+                         Error: {}",
                         state.token_id,
                         err
                     );
@@ -116,7 +124,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                 } else if state.expires_at < self.clock.now() {
                     error!(
                         "Received an error for token '{}' and the token has already expired! \
-                    Error: {}",
+                         Error: {}",
                         state.token_id,
                         err
                     );
@@ -124,8 +132,8 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                 } else {
                     error!(
                         "Received an error for token '{}'. Will not update the \
-                    token because it is still valid. \
-                    Error: {}",
+                         token because it is still valid. \
+                         Error: {}",
                         state.token_id,
                         err
                     );
@@ -163,7 +171,7 @@ fn update_token<T: Display>(
             state.is_error = false;
             info!(
                 "Refreshed token '{}' after {:.2} minutes. New token will expire in {:.2} minutes. \
-                Refresh in {:.2} minutes.",
+                 Refresh in {:.2} minutes.",
                 state.token_id,
                 diff_millis(state.expires_at, now) as f64 / (60.0 * 1000.0),
                 token_response.expires_in.as_secs() as f64 / 60.0,
@@ -216,4 +224,120 @@ fn call_token_service(service: &TokenService, scopes: &[Scope]) -> TokenServiceR
         BError::Transient(inner) => inner,
         BError::Permanent(inner) => inner,
     })
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::{Arc, Mutex};
+    use std::cell::Cell;
+    use std::rc::Rc;
+    use std::sync::mpsc;
+    use std::sync::atomic::AtomicBool;
+    use client::*;
+    use super::*;
+
+    #[derive(Clone)]
+    struct TestClock {
+        time: Rc<Cell<u64>>,
+    }
+
+    impl TestClock {
+        pub fn new() -> Self {
+            TestClock {
+                time: Rc::new(Cell::new(0)),
+            }
+        }
+
+        pub fn inc(&self, by_ms: u64) {
+            let past = self.time.get();
+            self.time.set(past + by_ms);
+        }
+
+        pub fn set(&self, ms: u64) {
+            self.time.set(ms);
+        }
+    }
+
+    impl Clock for TestClock {
+        fn now(&self) -> u64 {
+            self.time.get()
+        }
+    }
+
+    struct DummyTokenService {
+        counter: Arc<Mutex<u32>>,
+    }
+
+    impl DummyTokenService {
+        pub fn new() -> Self {
+            DummyTokenService {
+                counter: Arc::new(Mutex::new(0)),
+            }
+        }
+    }
+
+    impl TokenService for DummyTokenService {
+        fn get_token(&self, scopes: &[Scope]) -> TokenServiceResult {
+            let c: &mut u32 = &mut *self.counter.lock().unwrap();
+            let res = Ok(TokenServiceResponse {
+                token: AccessToken::new(c.to_string()),
+                expires_in: Duration::from_secs(1),
+            });
+            *c += 1;
+            res
+        }
+    }
+
+    fn create_data() -> (
+        Vec<Mutex<TokenState<&'static str>>>,
+        BTreeMap<&'static str, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
+    ) {
+        let mut groups = Vec::default();
+        groups.push(
+            ManagedTokenGroupBuilder::single_token(
+                "token",
+                vec![Scope::new("scope")],
+                DummyTokenService::new(),
+            ).build()
+                .unwrap(),
+        );
+        let tokens = create_tokens(&groups);
+        let states = create_states(groups, 0);
+        (states, tokens)
+    }
+
+    #[test]
+    fn clock_test() {
+        let clock1 = TestClock::new();
+        let clock2 = clock1.clone();
+        clock1.inc(100);
+        assert_eq!(100, clock2.now());
+    }
+
+    #[test]
+    fn initial_state_is_correct() {
+        let (states, _) = create_data();
+        let state = states[0].lock().unwrap();
+        assert_eq!("token", state.token_id);
+        assert_eq!(vec![Scope::new("scope")], state.scopes);
+        assert_eq!(0.75, state.refresh_threshold);
+        assert_eq!(0.85, state.warning_threshold);
+        assert_eq!(0, state.refresh_at);
+        assert_eq!(0, state.warn_at);
+        assert_eq!(0, state.expires_at);
+        assert_eq!(None, state.last_notification_at);
+        assert_eq!(false, state.is_initialized);
+        assert_eq!(true, state.is_error);
+        assert_eq!(0, state.index);
+    }
+
+    #[test]
+    fn updater_workflow() {
+        let (tx, rx) = mpsc::channel();
+        let is_running = AtomicBool::new(true);
+        let clock = TestClock::new();
+        let (states, tokens) = create_data();
+
+        let updater = TokenUpdater::new(&states, &tokens, rx, tx.clone(), &is_running, &clock);
+    }
 }

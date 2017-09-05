@@ -55,13 +55,11 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
     fn do_a_scheduling_round(&self) {
         for (idx, state) in self.states.iter().enumerate() {
             let state = &mut *state.lock().unwrap();
-            let request_refresh = !state.is_initialized ||
-                (!state.is_error && state.refresh_at <= self.clock.now());
+            let request_refresh =
+                !state.is_initialized || (!state.is_error && state.refresh_at <= self.clock.now());
             if request_refresh {
-                if let Err(err) = self.sender.send(ManagerCommand::ScheduledRefresh(
-                    idx,
-                    self.clock.now(),
-                ))
+                if let Err(err) = self.sender
+                    .send(ManagerCommand::ScheduledRefresh(idx, self.clock.now()))
                 {
                     error!("Could not send refresh command: {}", err);
                     break;
@@ -125,7 +123,9 @@ mod test {
 
     impl TestClock {
         pub fn new() -> Self {
-            TestClock { time: Rc::new(Cell::new(0)) }
+            TestClock {
+                time: Rc::new(Cell::new(0)),
+            }
         }
 
         pub fn inc(&self, by_ms: u64) {
@@ -144,25 +144,11 @@ mod test {
         }
     }
 
-    struct DummyTokenService {
-        counter: Arc<Mutex<u32>>,
-    }
-
-    impl DummyTokenService {
-        pub fn new() -> Self {
-            DummyTokenService { counter: Arc::new(Mutex::new(0)) }
-        }
-    }
+    struct DummyTokenService;
 
     impl TokenService for DummyTokenService {
         fn get_token(&self, scopes: &[Scope]) -> TokenServiceResult {
-            let c: &mut u32 = &mut *self.counter.lock().unwrap();
-            let res = Ok(TokenServiceResponse {
-                token: AccessToken::new(c.to_string()),
-                expires_in: Duration::from_secs(1),
-            });
-            *c += 1;
-            res
+            unimplemented!()
         }
     }
 
@@ -172,7 +158,7 @@ mod test {
             ManagedTokenGroupBuilder::single_token(
                 "token",
                 vec![Scope::new("scope")],
-                DummyTokenService::new(),
+                DummyTokenService,
             ).build()
                 .unwrap(),
         );
@@ -188,7 +174,7 @@ mod test {
     }
 
     #[test]
-    fn iniitial_state_is_correct() {
+    fn initial_state_is_correct() {
         let states = create_token_states();
         let state = states[0].lock().unwrap();
         assert_eq!("token", state.token_id);
