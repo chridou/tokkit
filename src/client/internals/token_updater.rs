@@ -63,7 +63,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
         match cmd {
             ManagerCommand::ScheduledRefresh(idx, timestamp) => {
                 let state = &self.states[idx];
-                let token_id = &state.lock().unwrap().token_id;
+                let token_id = &state.lock().unwrap().token_id.clone();
                 debug!("Scheduled refresh for token '{}'", token_id);
                 let &(_, ref token) = self.tokens.get(token_id).unwrap();
                 self.refresh_token(state, token, timestamp);
@@ -78,7 +78,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
             }
             ManagerCommand::RefreshOnError(idx, timestamp) => {
                 let state = &self.states[idx];
-                let token_id = &state.lock().unwrap().token_id;
+                let token_id = &state.lock().unwrap().token_id.clone();
                 info!("Refresh on error for token '{}'", token_id);
                 let &(_, ref token) = self.tokens.get(token_id).unwrap();
                 self.refresh_token(state, token, timestamp);
@@ -98,7 +98,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
         command_timestamp: u64,
     ) {
         let state: &mut TokenState<T> = &mut *state.lock().unwrap();
-        if state.last_touched < command_timestamp {
+        if state.last_touched < command_timestamp || !state.is_initialized {
             let result = call_token_service(&*state.token_service, &state.scopes);
             let do_update = if let Err(ref err) = result {
                 info!(
@@ -332,6 +332,142 @@ mod test {
     }
 
     #[test]
+    fn initializes_token_when_time_did_not_increase() {
+        let (tx, rx) = mpsc::channel();
+        let is_running = AtomicBool::new(true);
+        let clock = TestClock::new();
+        let (states, tokens) = create_data();
+
+        let updater = TokenUpdater::new(&states, &tokens, rx, tx.clone(), &is_running, &clock);
+
+        clock.set(0);
+        updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
+        {
+            let state = states[0].lock().unwrap();
+            assert_eq!("token", state.token_id);
+            assert_eq!(vec![Scope::new("scope")], state.scopes);
+            assert_eq!(0, state.last_touched);
+            assert_eq!(750, state.refresh_at);
+            assert_eq!(850, state.warn_at);
+            assert_eq!(1000, state.expires_at);
+            assert_eq!(None, state.last_notification_at);
+            assert_eq!(true, state.is_initialized);
+            assert_eq!(false, state.is_error);
+            assert_eq!(0, state.index);
+        }
+        assert_eq!(
+            "0",
+            &tokens
+                .get("token")
+                .unwrap()
+                .1
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap()
+                .0
+        );
+    }
+
+    #[test]
+    fn does_not_initialize_token_twice_when_time_did_not_increase() {
+        let (tx, rx) = mpsc::channel();
+        let is_running = AtomicBool::new(true);
+        let clock = TestClock::new();
+        let (states, tokens) = create_data();
+
+        let updater = TokenUpdater::new(&states, &tokens, rx, tx.clone(), &is_running, &clock);
+
+        clock.set(0);
+        updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
+        {
+            let state = states[0].lock().unwrap();
+            assert_eq!("token", state.token_id);
+            assert_eq!(vec![Scope::new("scope")], state.scopes);
+            assert_eq!(0, state.last_touched);
+            assert_eq!(750, state.refresh_at);
+            assert_eq!(850, state.warn_at);
+            assert_eq!(1000, state.expires_at);
+            assert_eq!(None, state.last_notification_at);
+            assert_eq!(true, state.is_initialized);
+            assert_eq!(false, state.is_error);
+            assert_eq!(0, state.index);
+        }
+        assert_eq!(
+            "0",
+            &tokens
+                .get("token")
+                .unwrap()
+                .1
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap()
+                .0
+        );
+
+        updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
+        {
+            let state = states[0].lock().unwrap();
+            assert_eq!(0, state.last_touched);
+            assert_eq!(750, state.refresh_at);
+            assert_eq!(850, state.warn_at);
+            assert_eq!(1000, state.expires_at);
+            assert_eq!(None, state.last_notification_at);
+        }
+        assert_eq!(
+            "0",
+            &tokens
+                .get("token")
+                .unwrap()
+                .1
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap()
+                .0
+        );
+    }
+
+    #[test]
+    fn initializes_token_when_time_increased() {
+        let (tx, rx) = mpsc::channel();
+        let is_running = AtomicBool::new(true);
+        let clock = TestClock::new();
+        let (states, tokens) = create_data();
+
+        let updater = TokenUpdater::new(&states, &tokens, rx, tx.clone(), &is_running, &clock);
+
+        clock.set(1);
+        updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
+        {
+            let state = states[0].lock().unwrap();
+            assert_eq!("token", state.token_id);
+            assert_eq!(vec![Scope::new("scope")], state.scopes);
+            assert_eq!(1, state.last_touched);
+            assert_eq!(751, state.refresh_at);
+            assert_eq!(851, state.warn_at);
+            assert_eq!(1001, state.expires_at);
+            assert_eq!(None, state.last_notification_at);
+            assert_eq!(true, state.is_initialized);
+            assert_eq!(false, state.is_error);
+            assert_eq!(0, state.index);
+        }
+        assert_eq!(
+            "0",
+            &tokens
+                .get("token")
+                .unwrap()
+                .1
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap()
+                .0
+        );
+    }
+
+    #[test]
     fn updater_workflow() {
         let (tx, rx) = mpsc::channel();
         let is_running = AtomicBool::new(true);
@@ -339,5 +475,197 @@ mod test {
         let (states, tokens) = create_data();
 
         let updater = TokenUpdater::new(&states, &tokens, rx, tx.clone(), &is_running, &clock);
+
+        clock.set(0);
+        updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
+        {
+            let state = states[0].lock().unwrap();
+            assert_eq!("token", state.token_id);
+            assert_eq!(vec![Scope::new("scope")], state.scopes);
+            assert_eq!(0, state.last_touched);
+            assert_eq!(750, state.refresh_at);
+            assert_eq!(850, state.warn_at);
+            assert_eq!(1000, state.expires_at);
+            assert_eq!(None, state.last_notification_at);
+            assert_eq!(true, state.is_initialized);
+            assert_eq!(false, state.is_error);
+            assert_eq!(0, state.index);
+        }
+        assert_eq!(
+            "0",
+            &tokens
+                .get("token")
+                .unwrap()
+                .1
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap()
+                .0
+        );
+
+        // Regular refresh
+        clock.set(750);
+        updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
+        {
+            let state = states[0].lock().unwrap();
+            assert_eq!("token", state.token_id);
+            assert_eq!(vec![Scope::new("scope")], state.scopes);
+            assert_eq!(750, state.last_touched);
+            assert_eq!(1500, state.refresh_at);
+            assert_eq!(1600, state.warn_at);
+            assert_eq!(1750, state.expires_at);
+            assert_eq!(None, state.last_notification_at);
+            assert_eq!(true, state.is_initialized);
+            assert_eq!(false, state.is_error);
+            assert_eq!(0, state.index);
+        }
+        assert_eq!(
+            "1",
+            &tokens
+                .get("token")
+                .unwrap()
+                .1
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap()
+                .0
+        );
+
+        // Second regular refresh with same timestamp as before should not trigger
+        clock.set(750);
+        updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
+        {
+            let state = states[0].lock().unwrap();
+            assert_eq!(750, state.last_touched);
+            assert_eq!(1500, state.refresh_at);
+            assert_eq!(1600, state.warn_at);
+            assert_eq!(1750, state.expires_at);
+            assert_eq!(true, state.is_initialized);
+            assert_eq!(false, state.is_error);
+        }
+        assert_eq!(
+            "1",
+            &tokens
+                .get("token")
+                .unwrap()
+                .1
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap()
+                .0
+        );
+
+        // Forced Refresh
+        clock.set(800);
+        updater.on_command(ManagerCommand::ForceRefresh("token", clock.now()));
+        {
+            let state = states[0].lock().unwrap();
+            assert_eq!(800, state.last_touched);
+            assert_eq!(1550, state.refresh_at);
+            assert_eq!(1650, state.warn_at);
+            assert_eq!(1800, state.expires_at);
+            assert_eq!(true, state.is_initialized);
+            assert_eq!(false, state.is_error);
+        }
+        assert_eq!(
+            "2",
+            &tokens
+                .get("token")
+                .unwrap()
+                .1
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap()
+                .0
+        );
+
+        // Refresh on error
+        {
+            let mut state = states[0].lock().unwrap();
+            state.is_error = true;
+        }
+        clock.set(801);
+        updater.on_command(ManagerCommand::RefreshOnError(0, clock.now()));
+        {
+            let state = states[0].lock().unwrap();
+            assert_eq!("token", state.token_id);
+            assert_eq!(801, state.last_touched);
+            assert_eq!(1551, state.refresh_at);
+            assert_eq!(1651, state.warn_at);
+            assert_eq!(1801, state.expires_at);
+            assert_eq!(true, state.is_initialized);
+            assert_eq!(false, state.is_error);
+        }
+        assert_eq!(
+            "3",
+            &tokens
+                .get("token")
+                .unwrap()
+                .1
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap()
+                .0
+        );
+
+        // Regular refresh on error
+        {
+            let mut state = states[0].lock().unwrap();
+            state.is_error = true;
+        }
+        clock.set(802);
+        updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
+        {
+            let state = states[0].lock().unwrap();
+            assert_eq!("token", state.token_id);
+            assert_eq!(802, state.last_touched);
+            assert_eq!(1552, state.refresh_at);
+            assert_eq!(1652, state.warn_at);
+            assert_eq!(1802, state.expires_at);
+            assert_eq!(true, state.is_initialized);
+            assert_eq!(false, state.is_error);
+        }
+        assert_eq!(
+            "4",
+            &tokens
+                .get("token")
+                .unwrap()
+                .1
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap()
+                .0
+        );
+
+        // Simultaneous refresh on error does nothing
+        updater.on_command(ManagerCommand::RefreshOnError(0, clock.now()));
+        {
+            let state = states[0].lock().unwrap();
+            assert_eq!("token", state.token_id);
+            assert_eq!(802, state.last_touched);
+            assert_eq!(1552, state.refresh_at);
+            assert_eq!(1652, state.warn_at);
+            assert_eq!(1802, state.expires_at);
+            assert_eq!(true, state.is_initialized);
+            assert_eq!(false, state.is_error);
+        }
+        assert_eq!(
+            "4",
+            &tokens
+                .get("token")
+                .unwrap()
+                .1
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap()
+                .0
+        );
     }
 }
