@@ -2,7 +2,7 @@
 //!
 //! See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
 //! and
-//! [Roles](https://tools.ietf.org/html/rfc6749#page-5)
+//! [Roles](https://tools.ietf.org/html/rfc6749#section-1.1)
 use std::fmt;
 use super::*;
 
@@ -18,7 +18,9 @@ pub trait TokenInfoParser: 'static {
     fn parse(&self, bytes: &[u8]) -> ::std::result::Result<TokenInfo, String>;
 }
 
-impl TokenInfoParser for Fn(&[u8]) -> ::std::result::Result<TokenInfo, String> {
+impl TokenInfoParser
+    for Fn(&[u8])
+        -> ::std::result::Result<TokenInfo, String> {
     /// Parse a slice of bytes to a `TokenInfo`
     fn parse(&self, bytes: &[u8]) -> ::std::result::Result<TokenInfo, String> {
         self(bytes)
@@ -109,7 +111,7 @@ impl TokenInfo {
     }
 }
 
-/// There is no athorization for the requested resource
+/// There is no authorization for the requested resource
 #[derive(Debug)]
 pub struct NotAuthorized(String);
 

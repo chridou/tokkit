@@ -144,10 +144,10 @@ mod test {
         }
     }
 
-    struct DummyTokenService;
+    struct DummyTokenProvider;
 
-    impl TokenService for DummyTokenService {
-        fn get_token(&self, scopes: &[Scope]) -> TokenServiceResult {
+    impl AccessTokenProvider for DummyTokenProvider {
+        fn request_access_token(&self, scopes: &[Scope]) -> AccessTokenProviderResult {
             unimplemented!()
         }
     }
@@ -158,7 +158,7 @@ mod test {
             ManagedTokenGroupBuilder::single_token(
                 "token",
                 vec![Scope::new("scope")],
-                DummyTokenService,
+                DummyTokenProvider,
             ).build()
                 .unwrap(),
         );

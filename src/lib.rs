@@ -9,7 +9,9 @@
 //!
 //! The documentation is available [online](https://docs.rs/tokkit).
 //!
-//! ## Verify Access Tokens
+//! ## Features
+//!
+//! ### Verify Access Tokens
 //!
 //! `tokkit` contains a module `token_info` for protected resources to verify access tokens.
 //!
@@ -25,9 +27,14 @@
 //! let tokeninfo = service.introspect(&token).unwrap();
 //! ```
 //!
-//! ## Managing Tokens
+//! ### Managing Tokens
 //!
-//! To be done....
+//! `tokkit` can manage and automatically update your access tokens if you
+//! are a client and want to access a resource owners resources.
+//!
+//! Currently `tokkit` only supports the
+//! [Resource Owner Password Credentials Grant](https://tools.ietf.org/html/rfc6749#section-4.3)
+//! which should only be used if the resource owner can really trust the client.
 //!
 //! ## License
 //!
@@ -40,11 +47,11 @@
 #[macro_use]
 extern crate log;
 
+extern crate backoff;
 #[macro_use]
 extern crate error_chain;
 extern crate json;
 extern crate reqwest;
-extern crate backoff;
 extern crate url;
 
 pub mod token_info;
@@ -57,7 +64,7 @@ use std::error::Error;
 
 /// An access token
 ///
-/// See [RFC6749](https://tools.ietf.org/html/rfc6749#page-10)
+/// See [RFC6749](https://tools.ietf.org/html/rfc6749#section-1.4)
 #[derive(Debug, Clone)]
 pub struct AccessToken(pub String);
 

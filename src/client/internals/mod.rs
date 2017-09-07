@@ -6,7 +6,7 @@ use std::time::{Duration, UNIX_EPOCH};
 mod request_scheduler;
 mod token_updater;
 
-use client::tokenservice::TokenService;
+use client::tokenprovider::AccessTokenProvider;
 use super::*;
 
 pub type EpochMillis = u64;
@@ -51,7 +51,7 @@ fn create_states<T: Clone>(
                 warn_at: now,
                 expires_at: now,
                 last_notification_at: None,
-                token_service: group.token_service.clone(),
+                token_provider: group.token_provider.clone(),
                 is_initialized: false,
                 index: idx,
                 is_error: true, // unitialized is also an error.
@@ -139,7 +139,7 @@ pub struct TokenState<T> {
     warn_at: EpochMillis,
     expires_at: EpochMillis,
     last_notification_at: Option<EpochMillis>,
-    token_service: Arc<TokenService + Send + Sync + 'static>,
+    token_provider: Arc<AccessTokenProvider + Send + Sync + 'static>,
     is_initialized: bool,
     is_error: bool,
     index: usize,

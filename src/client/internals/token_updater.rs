@@ -99,7 +99,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
     ) {
         let state: &mut TokenState<T> = &mut *state.lock().unwrap();
         if state.last_touched < command_timestamp || !state.is_initialized {
-            let result = call_token_service(&*state.token_service, &state.scopes);
+            let result = call_token_service(&*state.token_provider, &state.scopes);
             let do_update = if let Err(ref err) = result {
                 info!(
                     "Scheduling refresh on error for token {}: {}",
@@ -151,7 +151,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
 }
 
 fn update_token<T: Display>(
-    rsp: TokenServiceResult,
+    rsp: AccessTokenProviderResult,
     state: &mut TokenState<T>,
     token: &Mutex<StdResult<AccessToken, ErrorKind>>,
     clock: &Clock,
@@ -159,7 +159,7 @@ fn update_token<T: Display>(
     match rsp {
         Ok(token_response) => {
             {
-                *token.lock().unwrap() = Ok(token_response.token)
+                *token.lock().unwrap() = Ok(token_response.access_token)
             };
             let now = clock.now();
             let expires_in_ms = millis_from_duration(token_response.expires_in);
@@ -193,30 +193,34 @@ fn update_token<T: Display>(
     }
 }
 
-fn call_token_service(service: &TokenService, scopes: &[Scope]) -> TokenServiceResult {
-    let mut call = || -> StdResult<TokenServiceResponse, BError<TokenServiceError>> {
-        match service.get_token(scopes) {
-            Ok(rsp) => Ok(rsp),
-            Err(err @ TokenServiceError::Server(_)) => {
-                warn!("Call to token service failed: {}", err);
-                Err(BError::Transient(err))
+fn call_token_service(
+    provider: &AccessTokenProvider,
+    scopes: &[Scope],
+) -> AccessTokenProviderResult {
+    let mut call =
+        || -> StdResult<AuthorizationServerResponse, BError<AccessTokenProviderError>> {
+            match provider.request_access_token(scopes) {
+                Ok(rsp) => Ok(rsp),
+                Err(err @ AccessTokenProviderError::Server(_)) => {
+                    warn!("Call to token service failed: {}", err);
+                    Err(BError::Transient(err))
+                }
+                Err(err @ AccessTokenProviderError::Connection(_)) => {
+                    warn!("Call to token service failed: {}", err);
+                    Err(BError::Transient(err))
+                }
+                Err(err @ AccessTokenProviderError::Credentials(_)) => {
+                    warn!("Call to token service failed: {}", err);
+                    Err(BError::Transient(err))
+                }
+                Err(err @ AccessTokenProviderError::Other(_)) => {
+                    warn!("Call to token service failed: {}", err);
+                    Err(BError::Transient(err))
+                }
+                Err(err @ AccessTokenProviderError::Parse(_)) => Err(BError::Permanent(err)),
+                Err(err @ AccessTokenProviderError::Client(_)) => Err(BError::Permanent(err)),
             }
-            Err(err @ TokenServiceError::Connection(_)) => {
-                warn!("Call to token service failed: {}", err);
-                Err(BError::Transient(err))
-            }
-            Err(err @ TokenServiceError::Credentials(_)) => {
-                warn!("Call to token service failed: {}", err);
-                Err(BError::Transient(err))
-            }
-            Err(err @ TokenServiceError::Other(_)) => {
-                warn!("Call to token service failed: {}", err);
-                Err(BError::Transient(err))
-            }
-            Err(err @ TokenServiceError::Parse(_)) => Err(BError::Permanent(err)),
-            Err(err @ TokenServiceError::Client(_)) => Err(BError::Permanent(err)),
-        }
-    };
+        };
 
     let mut backoff = ExponentialBackoff::default();
 
@@ -264,23 +268,23 @@ mod test {
         }
     }
 
-    struct DummyTokenService {
+    struct DummyAccessTokenProvider {
         counter: Arc<Mutex<u32>>,
     }
 
-    impl DummyTokenService {
+    impl DummyAccessTokenProvider {
         pub fn new() -> Self {
-            DummyTokenService {
+            DummyAccessTokenProvider {
                 counter: Arc::new(Mutex::new(0)),
             }
         }
     }
 
-    impl TokenService for DummyTokenService {
-        fn get_token(&self, scopes: &[Scope]) -> TokenServiceResult {
+    impl AccessTokenProvider for DummyAccessTokenProvider {
+        fn request_access_token(&self, scopes: &[Scope]) -> AccessTokenProviderResult {
             let c: &mut u32 = &mut *self.counter.lock().unwrap();
-            let res = Ok(TokenServiceResponse {
-                token: AccessToken::new(c.to_string()),
+            let res = Ok(AuthorizationServerResponse {
+                access_token: AccessToken::new(c.to_string()),
                 expires_in: Duration::from_secs(1),
             });
             *c += 1;
@@ -297,7 +301,7 @@ mod test {
             ManagedTokenGroupBuilder::single_token(
                 "token",
                 vec![Scope::new("scope")],
-                DummyTokenService::new(),
+                DummyAccessTokenProvider::new(),
             ).build()
                 .unwrap(),
         );
