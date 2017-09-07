@@ -79,8 +79,8 @@ impl<T: Eq + Send + Clone + Display> Default for ManagedTokenBuilder<T> {
 /// An `AccessToken` to be managed.
 /// The `AccessToken` will be updated automatically.
 pub struct ManagedToken<T> {
-    token_id: T,
-    scopes: Vec<Scope>,
+    pub token_id: T,
+    pub scopes: Vec<Scope>,
 }
 
 pub struct ManagedTokenGroupBuilder<
