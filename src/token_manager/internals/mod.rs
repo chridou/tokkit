@@ -156,7 +156,6 @@ pub enum ManagerCommand<T> {
     ScheduledRefresh(usize, u64),
     ForceRefresh(T, u64),
     RefreshOnError(usize, u64),
-    Stop,
 }
 pub trait Clock {
     fn now(&self) -> EpochMillis;

@@ -84,10 +84,6 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                 self.refresh_token(state, token, timestamp);
                 true
             }
-            ManagerCommand::Stop => {
-                warn!("Received stop command.");
-                false
-            }
         }
     }
 

@@ -91,12 +91,9 @@ impl AccessTokenProvider for ResourceOwnerPasswordCredentialsGrantProvider {
                         rsp.read_to_end(&mut body)?;
                         parse_response(&body, None)
                     }
-                    StatusCode::BadRequest => {
-                        let body = str::from_utf8(&body)?;
-                        Err(AccessTokenProviderError::Server(
-                            format!("Received {}: {}", status, body),
-                        ))
-                    }
+                    StatusCode::BadRequest => Err(
+                        AccessTokenProviderError::BadAuthorizationRequest(parse_error(&body)?),
+                    ),
                     _ if status.is_client_error() => {
                         let body = str::from_utf8(&body)?;
                         Err(AccessTokenProviderError::Server(format!(
