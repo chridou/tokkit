@@ -15,7 +15,7 @@ use self::credentials::{CredentialsProvider, RequestTokenCredentials};
 pub use self::errors::*;
 
 mod errors;
-mod credentials;
+pub mod credentials;
 
 pub type AccessTokenProviderResult = StdResult<
     AuthorizationServerResponse,
@@ -99,21 +99,27 @@ impl AccessTokenProvider for ResourceOwnerPasswordCredentialsGrantProvider {
                     }
                     _ if status.is_client_error() => {
                         let body = str::from_utf8(&body)?;
-                        Err(AccessTokenProviderError::Server(
-                            format!("Received {}: {}", status, body),
-                        ))
+                        Err(AccessTokenProviderError::Server(format!(
+                            "The request sent to the authorization server was faulty({}): {}",
+                            status,
+                            body
+                        )))
                     }
                     _ if status.is_server_error() => {
                         let body = str::from_utf8(&body)?;
-                        Err(AccessTokenProviderError::Server(
-                            format!("Received {}: {}", status, body),
-                        ))
+                        Err(AccessTokenProviderError::Server(format!(
+                            "The authorization server returned an error({}): {}",
+                            status,
+                            body
+                        )))
                     }
                     _ => {
                         let body = str::from_utf8(&body)?;
-                        Err(AccessTokenProviderError::Client(
-                            format!("Received {}: {}", status, body),
-                        ))
+                        Err(AccessTokenProviderError::Client(format!(
+                            "Received unexpected status code({}) from authorizatin server: {}",
+                            status,
+                            body
+                        )))
                     }
                 }
             }
@@ -195,6 +201,51 @@ fn parse_response(bytes: &[u8], default_expires_in: Option<Duration>) -> AccessT
     } else {
         bail!(AccessTokenProviderError::Parse(
             "Token service response is not a JSON object".to_string()
+        ))
+    }
+}
+
+fn parse_error(bytes: &[u8]) -> StdResult<AuthorizationRequestError, AccessTokenProviderError> {
+    let json_utf8 =
+        str::from_utf8(bytes).map_err(|err| AccessTokenProviderError::Parse(err.to_string()))?;
+    let json =
+        json::parse(json_utf8).map_err(|err| AccessTokenProviderError::Parse(err.to_string()))?;
+
+    if let JsonValue::Object(data) = json {
+        let error = match data.get("error") {
+            Some(&JsonValue::Short(kind)) => kind.parse()?,
+            Some(&JsonValue::String(ref kind)) => kind.parse()?,
+            _ => bail!(AccessTokenProviderError::Parse(
+                "Expected a string as the error but found something else".to_string()
+            )),
+        };
+
+        let error_description = match data.get("error_description") {
+            Some(&JsonValue::Short(error_description)) => Some(error_description.to_string()),
+            Some(&JsonValue::String(ref error_description)) => Some(error_description.clone()),
+            None => None,
+            _ => bail!(AccessTokenProviderError::Parse(
+                "Expected a string as the error_description but found something else".to_string()
+            )),
+        };
+
+        let error_uri = match data.get("error_uri") {
+            Some(&JsonValue::Short(error_uri)) => Some(error_uri.to_string()),
+            Some(&JsonValue::String(ref error_uri)) => Some(error_uri.clone()),
+            None => None,
+            _ => bail!(AccessTokenProviderError::Parse(
+                "Expected a string as the error_uri but found something else".to_string()
+            )),
+        };
+
+        Ok(AuthorizationRequestError {
+            error,
+            error_description,
+            error_uri,
+        })
+    } else {
+        bail!(AccessTokenProviderError::Parse(
+            "The response is not a JSON object".to_string()
         ))
     }
 }

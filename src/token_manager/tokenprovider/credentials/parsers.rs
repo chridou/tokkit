@@ -1,13 +1,25 @@
+//! Parser for credentials, mostl likely JSON
 use std::str;
 use json;
 use json::*;
 
 use super::*;
 
+/// A parser for `ClientCredentials`
 pub trait ClientCredentialsParser {
     fn parse(&self, bytes: &[u8]) -> CredentialsResult<ClientCredentials>;
 }
 
+/// The default parser for `ClientCredentials`.
+///
+/// It parses the following JSON:
+///
+/// ```javascript
+/// {
+///    "client_id" : "<id>",
+///    "client_secret" : "<secret>"
+/// }
+/// ```
 pub struct DefaultClientCredentialsParser;
 
 impl ClientCredentialsParser for DefaultClientCredentialsParser {
@@ -16,10 +28,21 @@ impl ClientCredentialsParser for DefaultClientCredentialsParser {
     }
 }
 
+/// A parser for `ResourceOwnerCredentials`
 pub trait ResourceOwnerCredentialsParser {
     fn parse(&self, bytes: &[u8]) -> CredentialsResult<ResourceOwnerCredentials>;
 }
 
+/// The default parser for `ResourceOwnerCredentials`.
+///
+/// It parses the following JSON:
+///
+/// ```javascript
+/// {
+///    "username" : "<id>",
+///    "password" : "<secret>"
+/// }
+/// ```
 pub struct DefaultResourceOwnerCredentialsParser;
 
 impl ResourceOwnerCredentialsParser for DefaultResourceOwnerCredentialsParser {
@@ -28,6 +51,23 @@ impl ResourceOwnerCredentialsParser for DefaultResourceOwnerCredentialsParser {
     }
 }
 
+/// A parser `ResourceOwnerCredentials`where the resource owner is an application.
+///
+/// It parses the following JSON:
+///
+/// ```javascript
+/// {
+///    "application_username" : "<id>",
+///    "application_password" : "<secret>"
+/// }
+/// ```
+pub struct ApplicationResourceOwnerCredentialsParser;
+
+impl ResourceOwnerCredentialsParser for ApplicationResourceOwnerCredentialsParser {
+    fn parse(&self, bytes: &[u8]) -> CredentialsResult<ResourceOwnerCredentials> {
+        parse_resource_owner_credentials(bytes, "application_username", "application_password")
+    }
+}
 
 pub fn parse_client_credentials(
     bytes: &[u8],

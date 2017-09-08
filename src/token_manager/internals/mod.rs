@@ -6,7 +6,7 @@ use std::time::{Duration, UNIX_EPOCH};
 mod request_scheduler;
 mod token_updater;
 
-use client::tokenprovider::AccessTokenProvider;
+use token_manager::tokenprovider::AccessTokenProvider;
 use super::*;
 
 pub type EpochMillis = u64;

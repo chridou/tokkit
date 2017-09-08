@@ -12,7 +12,7 @@ error_chain! {
             description("token not initialized")
             display("Token not initialized: '{}'", t)
         }
-        AccessTokenProvider(error: ::client::tokenprovider::AccessTokenProviderError) {
+        AccessTokenProvider(error: ::token_manager::tokenprovider::AccessTokenProviderError) {
             description("error from token provider")
             display("Error from token provider: \"{}\"", error)
         }

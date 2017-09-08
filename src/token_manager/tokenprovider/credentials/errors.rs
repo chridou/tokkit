@@ -1,12 +1,16 @@
 use std::fmt;
 use std::error::Error;
 
+/// Type alias for the common return type regarding credentials
 pub type CredentialsResult<T> = Result<T, CredentialsError>;
 
 #[derive(Debug, Clone)]
 pub enum CredentialsError {
+    /// Incoming credentials data could not be parsed
     Parse(String),
+    /// Retrieving the data that should be parsed failed
     Io(String),
+    /// Anything else
     Other(String),
 }
 

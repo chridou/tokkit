@@ -205,6 +205,12 @@ fn call_token_service(
                     warn!("Call to token service failed: {}", err);
                     Err(BError::Transient(err))
                 }
+                Err(AccessTokenProviderError::BadAuthorizationRequest(err)) => {
+                    warn!("Call to token service failed: {:?}", err.error);
+                    Err(BError::Permanent(
+                        AccessTokenProviderError::BadAuthorizationRequest(err),
+                    ))
+                }
                 Err(err @ AccessTokenProviderError::Connection(_)) => {
                     warn!("Call to token service failed: {}", err);
                     Err(BError::Transient(err))

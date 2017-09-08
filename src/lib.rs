@@ -55,7 +55,7 @@ extern crate reqwest;
 extern crate url;
 
 pub mod token_info;
-pub mod client;
+pub mod token_manager;
 
 use std::fmt;
 use std::env::VarError;
