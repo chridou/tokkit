@@ -1,9 +1,11 @@
 //! # tokkit
 //!
-//! WORK IN PROGRESS
-//!
 //! `tokkit` is a simple(even simplistic) **tok**en tool**kit** for OAUTH2 authorization
 //! targetting service to service authorization.
+//!
+//! ## Adding tokkit to your project
+//!
+//! tokkit is available on [crates.io](https://crates.io/crates/tokkit).
 //!
 //! ## Documentation
 //!

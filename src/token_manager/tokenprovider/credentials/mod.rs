@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::PathBuf;
 use std::env::{self, VarError};
+use std::result::Result as StdResult;
 
 use {InitializationError, InitializationResult};
 
@@ -72,7 +73,7 @@ pub trait CredentialsProvider {
 }
 
 /// Reads the credentials for the resource owner and the client
-/// from two seperate JSON files.
+/// from two seperate (mostly) JSON files.
 pub struct SplitFileCredentialsProvider {
     client_credentials_file_path: PathBuf,
     owner_credentials_file_path: PathBuf,
@@ -192,22 +193,7 @@ impl SplitFileCredentialsProvider {
     where
         P: ResourceOwnerCredentialsParser + 'static,
     {
-        let credentials_dir: PathBuf = match env::var("TOKKIT_CREDENTIALS_DIR") {
-            Ok(dir) => dir.into(),
-            Err(VarError::NotPresent) => {
-                info!("'TOKKIT_CREDENTIALS_DIR' not found. Looking for 'CREDENTIALS_DIR'");
-                match env::var("CREDENTIALS_DIR") {
-                    Ok(dir) => dir.into(),
-                    Err(VarError::NotPresent) => bail!(InitializationError(
-                        "Path for credentials files not found. Please \
-                         set 'TOKKIT_CREDENTIALS_DIR' or 'CREDENTIALS_DIR'."
-                            .into()
-                    )),
-                    Err(err) => bail!(err),
-                }
-            }
-            Err(err) => bail!(err),
-        };
+        let credentials_dir = credentials_dir_from_env().map_err(|msg| InitializationError(msg))?;
 
         let owner_file_name: PathBuf = match env::var("TOKKIT_CREDENTIALS_RESOURCE_OWNER_FILENAME")
         {
@@ -265,6 +251,25 @@ impl SplitFileCredentialsProvider {
         SplitFileCredentialsProvider::with_default_client_parser_from_env(
             DefaultResourceOwnerCredentialsParser,
         )
+    }
+}
+
+fn credentials_dir_from_env() -> StdResult<PathBuf, String> {
+    match env::var("TOKKIT_CREDENTIALS_DIR") {
+        Ok(dir) => Ok(dir.into()),
+        Err(VarError::NotPresent) => {
+            info!("'TOKKIT_CREDENTIALS_DIR' not found. Looking for 'CREDENTIALS_DIR'");
+            match env::var("CREDENTIALS_DIR") {
+                Ok(dir) => Ok(dir.into()),
+                Err(VarError::NotPresent) => Err(
+                    "Path for credentials files not found. Please \
+                     set 'TOKKIT_CREDENTIALS_DIR' or 'CREDENTIALS_DIR'."
+                        .into(),
+                ),
+                Err(err) => Err(err.to_string()),
+            }
+        }
+        Err(err) => Err(err.to_string()),
     }
 }
 

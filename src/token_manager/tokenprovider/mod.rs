@@ -81,46 +81,44 @@ impl AccessTokenProvider for ResourceOwnerPasswordCredentialsGrantProvider {
             scopes,
             credentials,
         ) {
-            Ok(mut rsp) => {
-                let status = rsp.status().clone();
-                let mut body = Vec::new();
-                rsp.read_to_end(&mut body)?;
-                match status {
-                    StatusCode::Ok => {
-                        let mut body = Vec::new();
-                        rsp.read_to_end(&mut body)?;
-                        parse_response(&body, None)
-                    }
-                    StatusCode::BadRequest => Err(
-                        AccessTokenProviderError::BadAuthorizationRequest(parse_error(&body)?),
-                    ),
-                    _ if status.is_client_error() => {
-                        let body = str::from_utf8(&body)?;
-                        Err(AccessTokenProviderError::Server(format!(
-                            "The request sent to the authorization server was faulty({}): {}",
-                            status,
-                            body
-                        )))
-                    }
-                    _ if status.is_server_error() => {
-                        let body = str::from_utf8(&body)?;
-                        Err(AccessTokenProviderError::Server(format!(
-                            "The authorization server returned an error({}): {}",
-                            status,
-                            body
-                        )))
-                    }
-                    _ => {
-                        let body = str::from_utf8(&body)?;
-                        Err(AccessTokenProviderError::Client(format!(
-                            "Received unexpected status code({}) from authorizatin server: {}",
-                            status,
-                            body
-                        )))
-                    }
-                }
-            }
+            Ok(mut rsp) => evaluate_response(&mut rsp),
             Err(err) => Err(AccessTokenProviderError::Connection(err.to_string())),
+        }
+    }
+}
+
+fn evaluate_response(rsp: &mut Response) -> AccessTokenProviderResult {
+    let status = rsp.status().clone();
+    let mut body = Vec::new();
+    rsp.read_to_end(&mut body)?;
+    match status {
+        StatusCode::Ok => parse_response(&body, None),
+        StatusCode::BadRequest => Err(AccessTokenProviderError::BadAuthorizationRequest(
+            parse_error(&body)?,
+        )),
+        _ if status.is_client_error() => {
+            let body = str::from_utf8(&body)?;
+            Err(AccessTokenProviderError::Server(format!(
+                "The request sent to the authorization server was faulty({}): {}",
+                status,
+                body
+            )))
+        }
+        _ if status.is_server_error() => {
+            let body = str::from_utf8(&body)?;
+            Err(AccessTokenProviderError::Server(format!(
+                "The authorization server returned an error({}): {}",
+                status,
+                body
+            )))
+        }
+        _ => {
+            let body = str::from_utf8(&body)?;
+            Err(AccessTokenProviderError::Client(format!(
+                "Received unexpected status code({}) from authorizatin server: {}",
+                status,
+                body
+            )))
         }
     }
 }

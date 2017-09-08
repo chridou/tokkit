@@ -11,6 +11,7 @@ use std::thread;
 use std::result::Result as StdResult;
 use std::fmt::Display;
 use std::collections::BTreeMap;
+use std::env;
 use {AccessToken, Scope};
 
 
@@ -52,6 +53,24 @@ impl<T: Eq + Send + Clone + Display> ManagedTokenBuilder<T> {
         self
     }
 
+    pub fn with_scopes_from_env(&mut self) -> StdResult<&mut Self, InitializationError> {
+        self.with_scopes_from_selected_env_var("TOKKIT_MANAGED_TOKEN_SCOPES")
+    }
+
+    pub fn with_scopes_from_selected_env_var(
+        &mut self,
+        env_name: &str,
+    ) -> StdResult<&mut Self, InitializationError> {
+        match env::var(env_name) {
+            Ok(v) => {
+                let scopes = split_scopes(&v);
+                self.with_scopes(scopes)
+            }
+            Err(err) => bail!(err),
+        };
+        Ok(self)
+    }
+
     /// Builds the managed token if properly configured.
     pub fn build(self) -> StdResult<ManagedToken<T>, InitializationError> {
         let token_id = if let Some(token_id) = self.token_id {
@@ -66,6 +85,32 @@ impl<T: Eq + Send + Clone + Display> ManagedTokenBuilder<T> {
         })
     }
 }
+
+fn split_scopes(input: &str) -> Vec<Scope> {
+    input
+        .split(' ')
+        .filter(|s| s.len() > 0)
+        .map(Scope::new)
+        .collect()
+}
+
+impl ManagedTokenBuilder<String> {
+    pub fn with_id_from_env(&mut self) -> StdResult<&mut Self, InitializationError> {
+        self.with_id_from_selected_env_var("TOKKIT_MANAGED_TOKEN_ID")
+    }
+
+    pub fn with_id_from_selected_env_var(
+        &mut self,
+        env_name: &str,
+    ) -> StdResult<&mut Self, InitializationError> {
+        match env::var(env_name) {
+            Ok(v) => self.token_id = Some(v),
+            Err(err) => bail!(err),
+        };
+        Ok(self)
+    }
+}
+
 
 impl<T: Eq + Send + Clone + Display> Default for ManagedTokenBuilder<T> {
     fn default() -> Self {
