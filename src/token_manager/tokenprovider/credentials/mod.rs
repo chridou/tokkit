@@ -275,10 +275,12 @@ impl CredentialsProvider for SplitFileCredentialsProvider {
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)?;
         let client_credentials = self.client_credentials_parser.parse(&contents)?;
+
         let mut file = File::open(&self.owner_credentials_file_path)?;
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)?;
         let owner_credentials = self.owner_credentials_parser.parse(&contents)?;
+
         Ok(RequestTokenCredentials {
             owner_credentials,
             client_credentials,
