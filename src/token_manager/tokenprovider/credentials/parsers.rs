@@ -129,4 +129,54 @@ fn parse_credentials(
 }
 
 #[cfg(test)]
-mod test {}
+mod test {
+    use super::*;
+
+    #[test]
+    fn default_client_credentials_parser() {
+        let sample = r#"
+        {
+            "client_id" : "<id>",
+            "client_secret" : "<secret>"
+        }
+        "#;
+
+        let res = DefaultClientCredentialsParser
+            .parse(sample.as_bytes())
+            .unwrap();
+        assert_eq!("<id>", res.client_id);
+        assert_eq!("<secret>", res.client_secret);
+    }
+
+    #[test]
+    fn user_credentials_parser() {
+        let sample = r#"
+        {
+            "username" : "<id>",
+            "password" : "<secret>"
+        }
+        "#;
+
+        let res = DefaultResourceOwnerCredentialsParser
+            .parse(sample.as_bytes())
+            .unwrap();
+        assert_eq!("<id>", res.username);
+        assert_eq!("<secret>", res.password);
+    }
+
+    #[test]
+    fn application_user_credentials_parser() {
+        let sample = r#"
+        {
+            "application_username" : "<id>",
+            "application_password" : "<secret>"
+        }
+        "#;
+
+        let res = ApplicationResourceOwnerCredentialsParser
+            .parse(sample.as_bytes())
+            .unwrap();
+        assert_eq!("<id>", res.username);
+        assert_eq!("<secret>", res.password);
+    }
+}

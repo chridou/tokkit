@@ -108,12 +108,10 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use std::sync::{Arc, Mutex};
     use std::cell::Cell;
     use std::rc::Rc;
     use std::sync::mpsc;
     use std::sync::atomic::AtomicBool;
-    use client::*;
     use super::*;
 
     #[derive(Clone)]
@@ -147,7 +145,7 @@ mod test {
     struct DummyTokenProvider;
 
     impl AccessTokenProvider for DummyTokenProvider {
-        fn request_access_token(&self, scopes: &[Scope]) -> AccessTokenProviderResult {
+        fn request_access_token(&self, _scopes: &[Scope]) -> AccessTokenProviderResult {
             unimplemented!()
         }
     }

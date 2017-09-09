@@ -239,7 +239,7 @@ mod test {
     use std::rc::Rc;
     use std::sync::mpsc;
     use std::sync::atomic::AtomicBool;
-    use client::*;
+    use token_manager::AuthorizationServerResponse;
     use super::*;
 
     #[derive(Clone)]
@@ -283,11 +283,12 @@ mod test {
     }
 
     impl AccessTokenProvider for DummyAccessTokenProvider {
-        fn request_access_token(&self, scopes: &[Scope]) -> AccessTokenProviderResult {
+        fn request_access_token(&self, _scopes: &[Scope]) -> AccessTokenProviderResult {
             let c: &mut u32 = &mut *self.counter.lock().unwrap();
             let res = Ok(AuthorizationServerResponse {
                 access_token: AccessToken::new(c.to_string()),
                 expires_in: Duration::from_secs(1),
+                refresh_token: None,
             });
             *c += 1;
             res

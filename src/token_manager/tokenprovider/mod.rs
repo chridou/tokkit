@@ -26,6 +26,7 @@ pub type AccessTokenProviderResult = StdResult<
 pub struct AuthorizationServerResponse {
     pub access_token: AccessToken,
     pub expires_in: Duration,
+    pub refresh_token: Option<String>,
 }
 
 /// Calls an authorization server for an `AccessToken` and the
@@ -189,9 +190,20 @@ fn parse_response(bytes: &[u8], default_expires_in: Option<Duration>) -> AccessT
                 invalid
             ))),
         };
+
+        let refresh_token = match data.get("refresh_token") {
+            Some(&JsonValue::Short(refresh_token)) => Some(refresh_token.to_string()),
+            Some(&JsonValue::String(ref refresh_token)) => Some(refresh_token.clone()),
+            None => None,
+            _ => bail!(AccessTokenProviderError::Parse(
+                "Expected a string as the refresh token but found something else".to_string()
+            )),
+        };
+
         Ok(AuthorizationServerResponse {
             access_token: AccessToken::new(access_token),
             expires_in,
+            refresh_token,
         })
     } else {
         bail!(AccessTokenProviderError::Parse(

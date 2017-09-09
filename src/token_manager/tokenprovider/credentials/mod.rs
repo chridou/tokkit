@@ -69,7 +69,17 @@ pub struct RequestTokenCredentials {
 }
 
 pub trait CredentialsProvider {
-    fn credentials(&self) -> CredentialsResult<RequestTokenCredentials>;
+    fn client_credentials(&self) -> CredentialsResult<ClientCredentials>;
+    fn owner_credentials(&self) -> CredentialsResult<ResourceOwnerCredentials>;
+
+    fn credentials(&self) -> CredentialsResult<RequestTokenCredentials> {
+        let client_credentials = self.client_credentials()?;
+        let owner_credentials = self.owner_credentials()?;
+        Ok(RequestTokenCredentials {
+            client_credentials,
+            owner_credentials,
+        })
+    }
 }
 
 /// Reads the credentials for the resource owner and the client
@@ -275,20 +285,17 @@ fn credentials_dir_from_env() -> StdResult<PathBuf, String> {
 
 
 impl CredentialsProvider for SplitFileCredentialsProvider {
-    fn credentials(&self) -> CredentialsResult<RequestTokenCredentials> {
+    fn client_credentials(&self) -> CredentialsResult<ClientCredentials> {
         let mut file = File::open(&self.client_credentials_file_path)?;
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)?;
-        let client_credentials = self.client_credentials_parser.parse(&contents)?;
+        self.client_credentials_parser.parse(&contents)
+    }
 
+    fn owner_credentials(&self) -> CredentialsResult<ResourceOwnerCredentials> {
         let mut file = File::open(&self.owner_credentials_file_path)?;
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)?;
-        let owner_credentials = self.owner_credentials_parser.parse(&contents)?;
-
-        Ok(RequestTokenCredentials {
-            owner_credentials,
-            client_credentials,
-        })
+        self.owner_credentials_parser.parse(&contents)
     }
 }
