@@ -70,6 +70,6 @@ fn main() {
             }
             Err(err) => println!("Invalid token: {}", err),
         }
-        thread::sleep(Duration::from_millis(10_000))
+        thread::sleep(Duration::from_millis(60_000))
     }
 }
