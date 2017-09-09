@@ -2,7 +2,7 @@
 //!
 //! See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
 //! and
-//! [Roles](https://tools.ietf.org/html/rfc6749#page-5)
+//! [Roles](https://tools.ietf.org/html/rfc6749#section-1.1)
 use std::fmt;
 use super::*;
 
@@ -62,8 +62,8 @@ pub struct TokenInfo {
     /// that a given token has been issued by this authorization server,
     /// has not been revoked by the resource owner, and is within its
     /// given time window of validity (e.g., after its issuance time and
-    /// before its expiration time).  
-    /// See [Section 4](https://tools.ietf.org/html/rfc7662#section-4) 
+    /// before its expiration time).
+    /// See [Section 4](https://tools.ietf.org/html/rfc7662#section-4)
     /// for information on implementation of such checks.
     pub active: bool,
     /// OPTIONAL.  Human-readable identifier for the resource owner who
@@ -74,7 +74,7 @@ pub struct TokenInfo {
     pub user_id: Option<UserId>,
     /// OPTIONAL.  A JSON string containing a space-separated list of
     /// scopes associated with this token, in the format described in
-    /// [Section 3.3](https://tools.ietf.org/html/rfc7662#section-5.1) 
+    /// [Section 3.3](https://tools.ietf.org/html/rfc7662#section-5.1)
     /// of OAuth 2.0 [RFC6749](https://tools.ietf.org/html/rfc6749).
     pub scope: Vec<Scope>,
     /// OPTIONAL.  Integer timestamp, measured in the number of seconds
@@ -109,7 +109,7 @@ impl TokenInfo {
     }
 }
 
-/// There is no athorization for the requested resource
+/// There is no authorization for the requested resource
 #[derive(Debug)]
 pub struct NotAuthorized(String);
 
