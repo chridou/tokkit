@@ -3,6 +3,7 @@ use std::str;
 use std::time::Duration;
 use std::result::Result as StdResult;
 use std::io::Read;
+use std::env::{self, VarError};
 
 use reqwest::{Client, Error as RError, Response, StatusCode};
 use reqwest::header;
@@ -46,20 +47,22 @@ pub trait AccessTokenProvider {
 pub struct ResourceOwnerPasswordCredentialsGrantProvider {
     full_endpoint_url: String,
     client: Client,
-    credentials_provider: Box<CredentialsProvider>,
+    credentials_provider: Box<CredentialsProvider + Send + Sync + 'static>,
 }
 
 impl ResourceOwnerPasswordCredentialsGrantProvider {
-    pub fn new<U, C, R>(
+    pub fn new<U, C>(
         endpoint_url: U,
         credentials_provider: C,
         realm: Option<&str>,
     ) -> InitializationResult<Self>
     where
         U: Into<String>,
-        C: CredentialsProvider + 'static,
+        C: CredentialsProvider + Send + Sync + 'static,
     {
-        let client = Client::new().map_err(|err| InitializationError(format!("{}", err)))?;
+        let client = Client::new().map_err(
+            |err| InitializationError(format!("{}", err)),
+        )?;
         let mut full_endpoint_url = endpoint_url.into();
         if let Some(realm) = realm {
             full_endpoint_url.push_str("?realm=");
@@ -70,6 +73,42 @@ impl ResourceOwnerPasswordCredentialsGrantProvider {
             client: client,
             credentials_provider: Box::new(credentials_provider),
         })
+    }
+
+    /// Creates a new instance from the given `CredentialsProvider`
+    /// and gets the remaining values from environment variables.
+    ///
+    /// Environment variables:
+    ///
+    /// * '´TOKKIT_AUTHORIZATION_SERVER_URL´': URL of the endpoint to send the token request to
+    /// * '´TOKKIT_AUTHORIZATION_SERVER_REALM´': An optional Realm passed as a URL parameter
+    pub fn from_env_with_credentials_provider<C>(
+        credentials_provider: C,
+    ) -> InitializationResult<Self>
+    where
+        C: CredentialsProvider + Send + Sync + 'static,
+    {
+        let endpoint_url: String = match env::var("TOKKIT_AUTHORIZATION_SERVER_URL") {
+            Ok(url) => url.into(),
+            Err(VarError::NotPresent) => {
+                bail!(InitializationError(
+                    "'TOKKIT_AUTHORIZATION_SERVER_URL' not found.".to_string(),
+                ))
+            }
+            Err(err) => bail!(err),
+        };
+
+        let realm: Option<String> = match env::var("TOKKIT_AUTHORIZATION_SERVER_REALM") {
+            Ok(realm) => Some(realm.into()),
+            Err(VarError::NotPresent) => None,
+            Err(err) => bail!(err),
+        };
+
+        ResourceOwnerPasswordCredentialsGrantProvider::new(
+            endpoint_url,
+            credentials_provider,
+            realm.as_ref().map(|x| &**x),
+        )
     }
 }
 
@@ -116,7 +155,7 @@ fn evaluate_response(rsp: &mut Response) -> AccessTokenProviderResult {
         _ => {
             let body = str::from_utf8(&body)?;
             Err(AccessTokenProviderError::Client(format!(
-                "Received unexpected status code({}) from authorizatin server: {}",
+                "Received unexpected status code({}) from authorization server: {}",
                 status,
                 body
             )))
@@ -154,18 +193,23 @@ fn execute_access_token_request(
 
 
 fn parse_response(bytes: &[u8], default_expires_in: Option<Duration>) -> AccessTokenProviderResult {
-    let json_utf8 =
-        str::from_utf8(bytes).map_err(|err| AccessTokenProviderError::Parse(err.to_string()))?;
-    let json =
-        json::parse(json_utf8).map_err(|err| AccessTokenProviderError::Parse(err.to_string()))?;
+    let json_utf8 = str::from_utf8(bytes).map_err(|err| {
+        AccessTokenProviderError::Parse(err.to_string())
+    })?;
+    let json = json::parse(json_utf8).map_err(|err| {
+        AccessTokenProviderError::Parse(err.to_string())
+    })?;
 
     if let JsonValue::Object(data) = json {
         let access_token = match data.get("access_token") {
             Some(&JsonValue::Short(user_id)) => user_id.to_string(),
             Some(&JsonValue::String(ref user_id)) => user_id.clone(),
-            _ => bail!(AccessTokenProviderError::Parse(
-                "Expected a string as the access token but found something else".to_string()
-            )),
+            _ => {
+                bail!(AccessTokenProviderError::Parse(
+                    "Expected a string as the access token but found something else"
+                        .to_string(),
+                ))
+            }
         };
 
         let expires_in: Duration = match data.get("expires_in") {
@@ -174,30 +218,37 @@ fn parse_response(bytes: &[u8], default_expires_in: Option<Duration>) -> AccessT
                     Duration::from_secs(expires_in)
                 } else {
                     bail!(AccessTokenProviderError::Parse(
-                        "'expires in must fit into an u64'".to_string()
+                        "'expires in must fit into an u64'".to_string(),
                     ))
                 }
             }
-            None => if let Some(default_expires_in) = default_expires_in {
-                default_expires_in
-            } else {
-                bail!(AccessTokenProviderError::Parse(
-                    "No field 'expires_in' found and no default".to_string()
-                ))
-            },
-            invalid => bail!(AccessTokenProviderError::Parse(format!(
-                "Expected a number as 'expires_in' but found a {:?}",
-                invalid
-            ))),
+            None => {
+                if let Some(default_expires_in) = default_expires_in {
+                    default_expires_in
+                } else {
+                    bail!(AccessTokenProviderError::Parse(
+                        "No field 'expires_in' found and no default".to_string(),
+                    ))
+                }
+            }
+            invalid => {
+                bail!(AccessTokenProviderError::Parse(format!(
+                    "Expected a number as 'expires_in' but found a {:?}",
+                    invalid
+                )))
+            }
         };
 
         let refresh_token = match data.get("refresh_token") {
             Some(&JsonValue::Short(refresh_token)) => Some(refresh_token.to_string()),
             Some(&JsonValue::String(ref refresh_token)) => Some(refresh_token.clone()),
             None => None,
-            _ => bail!(AccessTokenProviderError::Parse(
-                "Expected a string as the refresh token but found something else".to_string()
-            )),
+            _ => {
+                bail!(AccessTokenProviderError::Parse(
+                    "Expected a string as the refresh token but found something else"
+                        .to_string(),
+                ))
+            }
         };
 
         Ok(AuthorizationServerResponse {
@@ -207,42 +258,53 @@ fn parse_response(bytes: &[u8], default_expires_in: Option<Duration>) -> AccessT
         })
     } else {
         bail!(AccessTokenProviderError::Parse(
-            "Token service response is not a JSON object".to_string()
+            "Token service response is not a JSON object".to_string(),
         ))
     }
 }
 
 fn parse_error(bytes: &[u8]) -> StdResult<AuthorizationRequestError, AccessTokenProviderError> {
-    let json_utf8 =
-        str::from_utf8(bytes).map_err(|err| AccessTokenProviderError::Parse(err.to_string()))?;
-    let json =
-        json::parse(json_utf8).map_err(|err| AccessTokenProviderError::Parse(err.to_string()))?;
+    let json_utf8 = str::from_utf8(bytes).map_err(|err| {
+        AccessTokenProviderError::Parse(err.to_string())
+    })?;
+    let json = json::parse(json_utf8).map_err(|err| {
+        AccessTokenProviderError::Parse(err.to_string())
+    })?;
 
     if let JsonValue::Object(data) = json {
         let error = match data.get("error") {
             Some(&JsonValue::Short(kind)) => kind.parse()?,
             Some(&JsonValue::String(ref kind)) => kind.parse()?,
-            _ => bail!(AccessTokenProviderError::Parse(
-                "Expected a string as the error but found something else".to_string()
-            )),
+            _ => {
+                bail!(AccessTokenProviderError::Parse(
+                    "Expected a string as the error but found something else"
+                        .to_string(),
+                ))
+            }
         };
 
         let error_description = match data.get("error_description") {
             Some(&JsonValue::Short(error_description)) => Some(error_description.to_string()),
             Some(&JsonValue::String(ref error_description)) => Some(error_description.clone()),
             None => None,
-            _ => bail!(AccessTokenProviderError::Parse(
-                "Expected a string as the error_description but found something else".to_string()
-            )),
+            _ => {
+                bail!(AccessTokenProviderError::Parse(
+                    "Expected a string as the error_description but found something else"
+                        .to_string(),
+                ))
+            }
         };
 
         let error_uri = match data.get("error_uri") {
             Some(&JsonValue::Short(error_uri)) => Some(error_uri.to_string()),
             Some(&JsonValue::String(ref error_uri)) => Some(error_uri.clone()),
             None => None,
-            _ => bail!(AccessTokenProviderError::Parse(
-                "Expected a string as the error_uri but found something else".to_string()
-            )),
+            _ => {
+                bail!(AccessTokenProviderError::Parse(
+                    "Expected a string as the error_uri but found something else"
+                        .to_string(),
+                ))
+            }
         };
 
         Ok(AuthorizationRequestError {
@@ -252,7 +314,7 @@ fn parse_error(bytes: &[u8]) -> StdResult<AuthorizationRequestError, AccessToken
         })
     } else {
         bail!(AccessTokenProviderError::Parse(
-            "The response is not a JSON object".to_string()
+            "The response is not a JSON object".to_string(),
         ))
     }
 }

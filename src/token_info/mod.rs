@@ -18,9 +18,7 @@ pub trait TokenInfoParser: 'static {
     fn parse(&self, bytes: &[u8]) -> ::std::result::Result<TokenInfo, String>;
 }
 
-impl TokenInfoParser
-    for Fn(&[u8])
-        -> ::std::result::Result<TokenInfo, String> {
+impl TokenInfoParser for Fn(&[u8]) -> ::std::result::Result<TokenInfo, String> {
     /// Parse a slice of bytes to a `TokenInfo`
     fn parse(&self, bytes: &[u8]) -> ::std::result::Result<TokenInfo, String> {
         self(bytes)

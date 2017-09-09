@@ -6,7 +6,7 @@ use std::time::{Duration, UNIX_EPOCH};
 mod request_scheduler;
 mod token_updater;
 
-use token_manager::tokenprovider::AccessTokenProvider;
+use token_manager::token_provider::AccessTokenProvider;
 use super::*;
 
 pub type EpochMillis = u64;
@@ -70,15 +70,16 @@ fn create_tokens<T: Eq + Ord + Clone + Display>(
     let mut idx = 0;
     for group in groups {
         for managed_token in &group.managed_tokens {
-            tokens.insert(
-                managed_token.token_id.clone(),
-                (
-                    idx,
-                    Mutex::new(Err(ErrorKind::NotInitialized(
-                        managed_token.token_id.to_string(),
-                    ))),
-                ),
-            );
+            tokens.insert(managed_token.token_id.clone(), (
+                idx,
+                Mutex::new(Err(
+                    ErrorKind::NotInitialized(
+                        managed_token
+                            .token_id
+                            .to_string(),
+                    ),
+                )),
+            ));
             idx += 1;
         }
     }
@@ -127,6 +128,20 @@ fn start<
 pub struct Inner<T> {
     pub tokens: BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
     pub is_running: AtomicBool,
+}
+
+impl<T: Eq + Ord + Clone + Display> Inner<T> {
+    pub fn get_access_token(&self, token_id: &T) -> Result<AccessToken> {
+        match self.tokens.get(&token_id) {
+            Some(&(_, ref guard)) => {
+                match &*guard.lock().unwrap() {
+                    &Ok(ref token) => Ok(token.clone()),
+                    &Err(ref err) => bail!(err.clone()),
+                }
+            }
+            None => bail!(ErrorKind::NoToken(token_id.to_string())),
+        }
+    }
 }
 
 pub struct TokenState<T> {
@@ -188,11 +203,7 @@ fn diff_millis(start_millis: u64, end_millis: u64) -> u64 {
 }
 
 fn minus_millis(from: u64, subtract: u64) -> u64 {
-    if subtract > from {
-        0
-    } else {
-        from - subtract
-    }
+    if subtract > from { 0 } else { from - subtract }
 }
 
 fn elapsed_millis_from(start_millis: u64, clock: &Clock) -> u64 {

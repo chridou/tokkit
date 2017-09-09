@@ -55,7 +55,8 @@ pub struct AuthorizationRequestError {
 
 impl fmt::Display for AuthorizationRequestError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut error_msg = format!(
+        let mut error_msg =
+            format!(
             "An invalid request was sent to the authorization server. \
              The error is \"{:?}\".",
             self.error,

@@ -55,11 +55,13 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
     fn do_a_scheduling_round(&self) {
         for (idx, state) in self.states.iter().enumerate() {
             let state = &mut *state.lock().unwrap();
-            let request_refresh =
-                !state.is_initialized || (!state.is_error && state.refresh_at <= self.clock.now());
+            let request_refresh = !state.is_initialized ||
+                (!state.is_error && state.refresh_at <= self.clock.now());
             if request_refresh {
-                if let Err(err) = self.sender
-                    .send(ManagerCommand::ScheduledRefresh(idx, self.clock.now()))
+                if let Err(err) = self.sender.send(ManagerCommand::ScheduledRefresh(
+                    idx,
+                    self.clock.now(),
+                ))
                 {
                     error!("Could not send refresh command: {}", err);
                     break;
@@ -121,9 +123,7 @@ mod test {
 
     impl TestClock {
         pub fn new() -> Self {
-            TestClock {
-                time: Rc::new(Cell::new(0)),
-            }
+            TestClock { time: Rc::new(Cell::new(0)) }
         }
 
         pub fn inc(&self, by_ms: u64) {

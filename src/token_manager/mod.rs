@@ -12,15 +12,16 @@ use std::result::Result as StdResult;
 use std::fmt::Display;
 use std::collections::BTreeMap;
 use std::env;
+use std::time::{Instant, Duration};
 use {AccessToken, Scope};
 
 
 mod error;
-pub mod tokenprovider;
+pub mod token_provider;
 mod internals;
 
 pub use self::error::*;
-use self::tokenprovider::*;
+use self::token_provider::*;
 use self::internals::Inner;
 use super::{InitializationError, InitializationResult};
 
@@ -53,10 +54,14 @@ impl<T: Eq + Send + Clone + Display> ManagedTokenBuilder<T> {
         self
     }
 
+    /// Adds `Scope`s from the environment. They are read from
+    /// `TOKKIT_MANAGED_TOKEN_SCOPES` and must be separated by spaces.
     pub fn with_scopes_from_env(&mut self) -> StdResult<&mut Self, InitializationError> {
         self.with_scopes_from_selected_env_var("TOKKIT_MANAGED_TOKEN_SCOPES")
     }
 
+    /// Adds `Scope`s from the environment. They are read from
+    /// an environment variable with the given name and must be separated by spaces.
     pub fn with_scopes_from_selected_env_var(
         &mut self,
         env_name: &str,
@@ -95,10 +100,14 @@ fn split_scopes(input: &str) -> Vec<Scope> {
 }
 
 impl ManagedTokenBuilder<String> {
+    /// Sets the `token_id` for this managed token from an environment variable.
+    /// The `token_id` is read from `TOKKIT_MANAGED_TOKEN_ID`.
     pub fn with_id_from_env(&mut self) -> StdResult<&mut Self, InitializationError> {
         self.with_id_from_selected_env_var("TOKKIT_MANAGED_TOKEN_ID")
     }
 
+    /// Sets the `token_id` for this managed token from an environment variable.
+    /// The `token_id` is read from an environment variable with the given name.
     pub fn with_id_from_selected_env_var(
         &mut self,
         env_name: &str,
@@ -128,10 +137,7 @@ pub struct ManagedToken<T> {
     pub scopes: Vec<Scope>,
 }
 
-pub struct ManagedTokenGroupBuilder<
-    T: Eq + Send + Clone + Display,
-    S: AccessTokenProvider + 'static,
-> {
+pub struct ManagedTokenGroupBuilder<T, S: AccessTokenProvider + 'static> {
     token_provider: Option<Arc<S>>,
     managed_tokens: Vec<ManagedToken<T>>,
     refresh_threshold: f32,
@@ -140,26 +146,34 @@ pub struct ManagedTokenGroupBuilder<
 
 impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + Send + Sync + 'static>
     ManagedTokenGroupBuilder<T, S> {
+    /// Sets the `AccessTokenProvider` for this group of `ManagedToken`s.
+    /// This is a mandatory value.
     pub fn with_token_provider(&mut self, token_provider: S) -> &mut Self {
         self.token_provider = Some(Arc::new(token_provider));
         self
     }
 
+    /// Adds a `ManagedToken` to this group.
     pub fn with_managed_token(&mut self, managed_token: ManagedToken<T>) -> &mut Self {
         self.managed_tokens.push(managed_token);
         self
     }
 
+    /// Sets the refresh interval as a percentage of the "expires in" sent
+    /// by the authorization server. The default is `0.75`
     pub fn with_refresh_threshold(&mut self, refresh_threshold: f32) -> &mut Self {
         self.refresh_threshold = refresh_threshold;
         self
     }
 
+    /// Sets the warnoing interval as a percentage of the "expires in" sent
+    /// by the authorization server. The default is `0.85`
     pub fn with_warning_threshold(&mut self, warning_threshold: f32) -> &mut Self {
         self.refresh_threshold = warning_threshold;
         self
     }
 
+    /// Adds a `ManagedToken` built from the given `ManagedTokenBuilder`.
     pub fn with_managed_token_from_builder(
         &mut self,
         builder: ManagedTokenBuilder<T>,
@@ -168,6 +182,7 @@ impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + Send + Sync + 'sta
         Ok(self.with_managed_token(managed_token))
     }
 
+    /// Sets everything needed to manage the give token.
     pub fn single_token(token_id: T, scopes: Vec<Scope>, token_provider: S) -> Self {
         let managed_token = ManagedToken { token_id, scopes };
         let mut builder = Self::default();
@@ -177,6 +192,9 @@ impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + Send + Sync + 'sta
         builder
     }
 
+    /// Build the `ManagedTokenGroup`.
+    ///
+    /// Fails if not all required fields are set properly.
     pub fn build(self) -> StdResult<ManagedTokenGroup<T>, InitializationError> {
         let token_provider = if let Some(token_provider) = self.token_provider {
             token_provider
@@ -247,13 +265,7 @@ pub struct AccessTokenSource<T> {
 impl<T: Eq + Ord + Clone + Display> AccessTokenSource<T> {
     /// Get an `AccessToken` by identifier.
     pub fn get_access_token(&self, token_id: &T) -> Result<AccessToken> {
-        match self.inner.tokens.get(&token_id) {
-            Some(&(_, ref guard)) => match &*guard.lock().unwrap() {
-                &Ok(ref token) => Ok(token.clone()),
-                &Err(ref err) => bail!(err.clone()),
-            },
-            None => bail!(ErrorKind::NoToken(token_id.to_string())),
-        }
+        self.inner.get_access_token(token_id)
     }
 
     /// Refresh the `AccessToken` for the given identifier.
@@ -325,6 +337,58 @@ impl AccessTokenManager {
             }
         }
         let (inner, sender) = internals::initialize(groups, internals::SystemClock);
+        Ok(AccessTokenSource { inner, sender })
+    }
+
+    /// Starts the `AccessTokenManager` in the background and waits until all
+    /// tokens have been initialized or a timeout elapsed..
+    pub fn start_and_wait<T: Eq + Ord + Send + Sync + Clone + Display + 'static>(
+        groups: Vec<ManagedTokenGroup<T>>,
+        timeout_in: Duration,
+    ) -> InitializationResult<AccessTokenSource<T>> {
+        {
+            let mut seen = BTreeMap::default();
+            for group in &groups {
+                for managed_token in &group.managed_tokens {
+                    let token_id = &managed_token.token_id;
+                    if seen.contains_key(token_id) {
+                        bail!(InitializationError(
+                            format!("Token id '{}' is used more than once.", token_id),
+                        ))
+                    } else {
+                        seen.insert(token_id, ());
+                    }
+                }
+            }
+        }
+
+        let (inner, sender) = internals::initialize(groups, internals::SystemClock);
+
+        let start = Instant::now();
+        loop {
+            if start.elapsed() >= timeout_in {
+                return Err(InitializationError(
+                    "Not all tokens were initialized within the \
+                given time."
+                        .into(),
+                ));
+            }
+
+            let all_initialized = inner.tokens.keys().all(|id| {
+                if let Err(Error(ErrorKind::NotInitialized(_), _)) = inner.get_access_token(id) {
+                    true
+                } else {
+                    false
+                }
+            });
+
+            if all_initialized {
+                break;
+            }
+
+            ::std::thread::sleep(Duration::from_millis(10));
+        }
+
         Ok(AccessTokenSource { inner, sender })
     }
 }

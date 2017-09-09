@@ -249,9 +249,7 @@ mod test {
 
     impl TestClock {
         pub fn new() -> Self {
-            TestClock {
-                time: Rc::new(Cell::new(0)),
-            }
+            TestClock { time: Rc::new(Cell::new(0)) }
         }
 
         pub fn inc(&self, by_ms: u64) {
@@ -276,9 +274,7 @@ mod test {
 
     impl DummyAccessTokenProvider {
         pub fn new() -> Self {
-            DummyAccessTokenProvider {
-                counter: Arc::new(Mutex::new(0)),
-            }
+            DummyAccessTokenProvider { counter: Arc::new(Mutex::new(0)) }
         }
     }
 
@@ -295,10 +291,10 @@ mod test {
         }
     }
 
-    fn create_data() -> (
-        Vec<Mutex<TokenState<&'static str>>>,
-        BTreeMap<&'static str, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
-    ) {
+    fn create_data()
+        -> (Vec<Mutex<TokenState<&'static str>>>,
+            BTreeMap<&'static str, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>)
+    {
         let mut groups = Vec::default();
         groups.push(
             ManagedTokenGroupBuilder::single_token(

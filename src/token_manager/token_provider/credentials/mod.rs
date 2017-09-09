@@ -87,8 +87,8 @@ pub trait CredentialsProvider {
 pub struct SplitFileCredentialsProvider {
     client_credentials_file_path: PathBuf,
     owner_credentials_file_path: PathBuf,
-    client_credentials_parser: Box<ClientCredentialsParser>,
-    owner_credentials_parser: Box<ResourceOwnerCredentialsParser>,
+    client_credentials_parser: Box<ClientCredentialsParser + Send + Sync + 'static>,
+    owner_credentials_parser: Box<ResourceOwnerCredentialsParser+ Send + Sync + 'static>,
 }
 
 impl SplitFileCredentialsProvider {
@@ -103,8 +103,8 @@ impl SplitFileCredentialsProvider {
     where
         C: Into<PathBuf>,
         O: Into<PathBuf>,
-        CP: ClientCredentialsParser + 'static,
-        UP: ResourceOwnerCredentialsParser + 'static,
+        CP: ClientCredentialsParser + Send + Sync + 'static,
+        UP: ResourceOwnerCredentialsParser + Send + Sync + 'static,
     {
         SplitFileCredentialsProvider {
             client_credentials_file_path: client_credentials_file_path.into(),
@@ -172,7 +172,7 @@ impl SplitFileCredentialsProvider {
     where
         C: Into<PathBuf>,
         O: Into<PathBuf>,
-        P: ResourceOwnerCredentialsParser + 'static,
+        P: ResourceOwnerCredentialsParser + Send + Sync + 'static,
     {
         SplitFileCredentialsProvider::new(
             client_credentials_file_path,
@@ -201,19 +201,21 @@ impl SplitFileCredentialsProvider {
         owner_credentials_parser: P,
     ) -> InitializationResult<Self>
     where
-        P: ResourceOwnerCredentialsParser + 'static,
+        P: ResourceOwnerCredentialsParser + Send + Sync + 'static,
     {
-        let credentials_dir = credentials_dir_from_env().map_err(|msg| InitializationError(msg))?;
+        let credentials_dir = credentials_dir_from_env().map_err(
+            |msg| InitializationError(msg),
+        )?;
 
-        let owner_file_name: PathBuf = match env::var("TOKKIT_CREDENTIALS_RESOURCE_OWNER_FILENAME")
-        {
-            Ok(dir) => dir.into(),
-            Err(VarError::NotPresent) => {
-                warn!("No owner file name. Assuming 'user.json'");
-                "user.json".into()
-            }
-            Err(err) => bail!(err),
-        };
+        let owner_file_name: PathBuf =
+            match env::var("TOKKIT_CREDENTIALS_RESOURCE_OWNER_FILENAME") {
+                Ok(dir) => dir.into(),
+                Err(VarError::NotPresent) => {
+                    warn!("No owner file name. Assuming 'user.json'");
+                    "user.json".into()
+                }
+                Err(err) => bail!(err),
+            };
 
         let client_file_name: PathBuf = match env::var("TOKKIT_CREDENTIALS_CLIENT_FILENAME") {
             Ok(dir) => dir.into(),
