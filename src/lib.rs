@@ -51,11 +51,11 @@
 //!     ResourceOwnerPasswordCredentialsGrantProvider
 //!         ::from_env_with_credentials_provider(credentials_provider)
 //!         .unwrap();
-//! 
+//!
 //! let token_group =
 //!     ManagedTokenGroupBuilder::single_token(
-//!         "my_token_identifier", 
-//!         vec![Scope::new("read_my_diary")], 
+//!         "my_token_identifier",
+//!         vec![Scope::new("read_my_diary")],
 //!         token_provider)
 //!     .build()
 //!     .unwrap();

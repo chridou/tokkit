@@ -88,7 +88,7 @@ pub struct SplitFileCredentialsProvider {
     client_credentials_file_path: PathBuf,
     owner_credentials_file_path: PathBuf,
     client_credentials_parser: Box<ClientCredentialsParser + Send + Sync + 'static>,
-    owner_credentials_parser: Box<ResourceOwnerCredentialsParser+ Send + Sync + 'static>,
+    owner_credentials_parser: Box<ResourceOwnerCredentialsParser + Send + Sync + 'static>,
 }
 
 impl SplitFileCredentialsProvider {
