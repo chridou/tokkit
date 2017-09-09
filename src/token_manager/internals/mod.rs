@@ -105,7 +105,7 @@ fn start<
         let scheduler = request_scheduler::RefreshScheduler::new(
             &*states1,
             &sender1,
-            30_000,
+            5_000,
             60_000,
             &inner1.is_running,
             &clock1,

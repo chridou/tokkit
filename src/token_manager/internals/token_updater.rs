@@ -94,7 +94,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
         command_timestamp: u64,
     ) {
         let state: &mut TokenState<T> = &mut *state.lock().unwrap();
-        if state.last_touched < command_timestamp || !state.is_initialized {
+        if state.last_touched <= command_timestamp || !state.is_initialized {
             let result = call_token_service(&*state.token_provider, &state.scopes);
             let do_update = if let Err(ref err) = result {
                 info!(
@@ -102,6 +102,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                     state.token_id,
                     err
                 );
+
                 self.sender
                     .send(ManagerCommand::RefreshOnError(
                         state.index,
@@ -159,6 +160,7 @@ fn update_token<T: Display>(
             };
             let now = clock.now();
             let expires_in_ms = millis_from_duration(token_response.expires_in);
+            let old_last_touched = state.last_touched;
             state.last_touched = now;
             state.expires_at = now + expires_in_ms;
             state.refresh_at = now + (expires_in_ms as f32 * state.refresh_threshold) as u64;
@@ -166,12 +168,12 @@ fn update_token<T: Display>(
             state.is_initialized = true;
             state.is_error = false;
             info!(
-                "Refreshed token '{}' after {:.2} minutes. New token will expire in {:.2} minutes. \
-                 Refresh in {:.2} minutes.",
+                "Refreshed token '{}' after {:.3} minutes. New token will expire in {:.3} minutes. \
+                 Refresh in {:.3} minutes.",
                 state.token_id,
-                diff_millis(state.expires_at, now) as f64 / (60.0 * 1000.0),
+                diff_millis(old_last_touched, now) as f64 / (60.0 * 1000.0),
                 token_response.expires_in.as_secs() as f64 / 60.0,
-                diff_millis(state.refresh_at, now) as f64 / (60.0 * 1000.0),
+                diff_millis(now, state.refresh_at) as f64 / (60.0 * 1000.0),
             );
         }
         Err(err) => {
