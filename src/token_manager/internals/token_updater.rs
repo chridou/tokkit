@@ -79,12 +79,12 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                 true
             }
             ManagerCommand::RefreshOnError(idx, timestamp) => {
-                let state = &self.states[idx];
-                let token_id = &state.lock().unwrap().token_id.clone();
                 // This is a temporarly hack
                 // and we need a better way not to
                 // spam the authorization server....
-                thread::sleep(Duration::from_millis(500));
+                thread::sleep(Duration::from_millis(713));
+                let state = &self.states[idx];
+                let token_id = &state.lock().unwrap().token_id.clone();
                 info!("Refresh on error for token '{}'", token_id);
                 let &(_, ref token) = self.tokens.get(token_id).unwrap();
                 self.refresh_token(state, token, timestamp);

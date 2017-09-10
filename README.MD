@@ -1,5 +1,7 @@
 # tokkit
 
+[![Crates.io](https://img.shields.io/crates/v/tokkit.svg)](https://crates.io/crates/tokkit) [![docs.rs](https://docs.rs/tokkit/badge.svg)](https://crates.io/crates/tokkit) [![Crates.io](https://img.shields.io/crates/d/tokkit.svg)](https://crates.io/crates/tokkit) [![Build Status](https://travis-ci.org/chridou/tokkit.svg?branch=master)](https://travis-ci.org/chridou/tokkit) [![license-mit](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/chridou/tokkit/blob/master/LICENSE-MIT) [![license-apache](http://img.shields.io/badge/license-APACHE-blue.svg)](https://github.com/chridou/tokkit/blob/master/LICENSE-APACHE)
+
 `tokkit` is a simple(even simplistic) **tok**en tool**kit** for OAUTH2 authorization
 targetting service to service authorization.
 

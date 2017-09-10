@@ -4,14 +4,17 @@ error_chain! {
     }
 
     errors {
+        /// There is no token with that identifier...
         NoToken(t: String) {
             description("no token")
             display("no token: '{}'", t)
         }
+        /// The token with the given identifier is not yet initialized
         NotInitialized(t: String) {
             description("token not initialized")
             display("Token not initialized: '{}'", t)
         }
+        /// An error from the `AccessTokenProvider`
         AccessTokenProvider(error: ::token_manager::token_provider::AccessTokenProviderError) {
             description("error from token provider")
             display("Error from token provider: \"{}\"", error)
