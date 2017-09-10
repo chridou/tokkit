@@ -29,6 +29,7 @@
 //! use tokkit::token_info::*;
 //!
 //! let builder = RemoteTokenInfoServiceBuilder::google_v3();
+//!
 //! let service = builder.build().unwrap();
 //!
 //! let token = AccessToken::new("<token>");

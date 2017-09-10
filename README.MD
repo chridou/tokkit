@@ -21,10 +21,15 @@ The documentation is available [online](https://docs.rs/tokkit).
 
 ```rust,no_run
 use tokkit::*;
+
 use tokkit::token_info::*;
+
 let builder = RemoteTokenInfoServiceBuilder::google_v3();
+
 let service = builder.build().unwrap();
+
 let token = AccessToken::new("<token>");
+
 let tokeninfo = service.introspect(&token).unwrap();
 ```
 
