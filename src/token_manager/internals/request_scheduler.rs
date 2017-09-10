@@ -1,13 +1,14 @@
 use super::*;
 use std::sync::mpsc;
+use std::cmp;
 
 pub struct RefreshScheduler<'a, T: 'a> {
     states: &'a [Mutex<TokenState<T>>],
     sender: &'a mpsc::Sender<ManagerCommand<T>>,
     /// The time that must at least elapse between 2 notifications
     min_notification_interval_ms: u64,
-    /// The number of ms a cycle must at least take.
-    min_cycle_dur_ms: u64,
+    /// The number of ms a cycle should take at max.
+    max_cycle_dur_ms: u64,
     is_running: &'a AtomicBool,
     clock: &'a Clock,
 }
@@ -16,7 +17,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
     pub fn new(
         states: &'a [Mutex<TokenState<T>>],
         sender: &'a mpsc::Sender<ManagerCommand<T>>,
-        min_cycle_dur_ms: u64,
+        max_cycle_dur_ms: u64,
         min_notification_interval_ms: u64,
         is_running: &'a AtomicBool,
         clock: &'a Clock,
@@ -25,7 +26,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
             states,
             sender,
             min_notification_interval_ms,
-            min_cycle_dur_ms,
+            max_cycle_dur_ms,
             is_running,
             clock,
         }
@@ -40,10 +41,12 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
         while self.is_running.load(Ordering::Relaxed) {
             let start = self.clock.now();
 
-            self.do_a_scheduling_round();
+            let next_scheduled_at = self.do_a_scheduling_round();
 
             let elapsed = elapsed_millis_from(start, self.clock);
-            let sleep_dur_ms = minus_millis(self.min_cycle_dur_ms, elapsed);
+            let sleep_dur_ms_regular = minus_millis(self.max_cycle_dur_ms, elapsed);
+            let sleep_next_scheduled_ms = diff_millis(self.clock.now(), next_scheduled_at);
+            let sleep_dur_ms = cmp::min(sleep_dur_ms_regular, sleep_next_scheduled_ms);
             if sleep_dur_ms > 0 {
                 let sleep_dur = Duration::from_millis(sleep_dur_ms);
                 thread::sleep(sleep_dur);
@@ -52,24 +55,46 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
         info!("Scheduler loop exited.")
     }
 
-    fn do_a_scheduling_round(&self) {
+    fn do_a_scheduling_round(&self) -> EpochMillis {
+        let mut next_at = u64::max_value();
+        let mut is_refresh_pending = false;
         for (idx, state) in self.states.iter().enumerate() {
             let state = &mut *state.lock().unwrap();
-            let request_refresh = !state.is_initialized ||
-                (!state.is_error && state.refresh_at <= self.clock.now());
-            if request_refresh {
-                if let Err(err) = self.sender.send(ManagerCommand::ScheduledRefresh(
-                    idx,
-                    self.clock.now(),
-                ))
-                {
-                    error!("Could not send refresh command: {}", err);
-                    break;
-                };
+            if state.scheduled_for <= self.clock.now() {
+                if !state.is_initialized || !state.is_error {
+                    if let Err(err) = self.sender.send(ManagerCommand::ScheduledRefresh(
+                        idx,
+                        self.clock.now(),
+                    ))
+                    {
+                        error!("Could not send refresh command: {}", err);
+                        break;
+                    }
+                } else {
+                    if let Err(err) = self.sender.send(ManagerCommand::RefreshOnError(
+                        idx,
+                        self.clock.now(),
+                    ))
+                    {
+                        error!("Could not send refresh on error command: {}", err);
+                        break;
+                    }
+
+                }
+                state.refresh_pending = true;
+                is_refresh_pending = true;
+            } else {
+                next_at = cmp::min(next_at, state.scheduled_for);
+                is_refresh_pending = is_refresh_pending || state.refresh_pending;
             }
             if state.is_initialized {
                 self.check_notifications(state);
             }
+        }
+        if is_refresh_pending {
+            self.clock.now() + 50
+        } else {
+            next_at
         }
     }
 
@@ -96,6 +121,13 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
                     "Token '{}' expires in {:.2} minutes.",
                     state.token_id,
                     (state.expires_at - now) as f64 / 60_000.0
+                );
+                true
+            } else if state.refresh_at <= now {
+                info!(
+                    "Token '{}' should have been refreshed {:.2} minutes ago.",
+                    state.token_id,
+                    (now - state.expires_at) as f64 / 60_000.0
                 );
                 true
             } else {
@@ -185,7 +217,6 @@ mod test {
         assert_eq!(None, state.last_notification_at);
         assert_eq!(false, state.is_initialized);
         assert_eq!(true, state.is_error);
-        assert_eq!(0, state.index);
     }
 
     #[test]
@@ -211,7 +242,6 @@ mod test {
             assert_eq!(None, state.last_notification_at);
             assert_eq!(false, state.is_initialized);
             assert_eq!(true, state.is_error);
-            assert_eq!(0, state.index);
         }
 
         let msg = rx.recv().unwrap();
@@ -233,7 +263,6 @@ mod test {
             assert_eq!(None, state.last_notification_at);
             assert_eq!(false, state.is_initialized);
             assert_eq!(true, state.is_error);
-            assert_eq!(0, state.index);
         }
 
         let msg = rx.recv().unwrap();
@@ -264,7 +293,6 @@ mod test {
             assert_eq!(None, state.last_notification_at);
             assert_eq!(false, state.is_initialized);
             assert_eq!(true, state.is_error);
-            assert_eq!(0, state.index);
         }
 
 

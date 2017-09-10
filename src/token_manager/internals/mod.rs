@@ -38,7 +38,6 @@ fn create_states<T: Clone>(
     now: EpochMillis,
 ) -> Vec<Mutex<TokenState<T>>> {
     let mut states = Vec::new();
-    let mut idx = 0;
     for group in groups {
         for managed_token in group.managed_tokens {
             states.push(Mutex::new(TokenState {
@@ -50,13 +49,13 @@ fn create_states<T: Clone>(
                 refresh_at: now,
                 warn_at: now,
                 expires_at: now,
+                scheduled_for: now,
+                refresh_pending: false,
                 last_notification_at: None,
                 token_provider: group.token_provider.clone(),
                 is_initialized: false,
-                index: idx,
                 is_error: true, // unitialized is also an error.
             }));
-            idx += 1;
         }
     }
     states
@@ -99,14 +98,13 @@ fn start<
     let states1 = Arc::new(states);
     let states2 = states1.clone();
     let inner1 = inner.clone();
-    let sender1 = sender.clone();
     let clock1 = clock.clone();
     thread::spawn(move || {
         let scheduler = request_scheduler::RefreshScheduler::new(
             &*states1,
-            &sender1,
-            5_000,
-            60_000,
+            &sender,
+            500,
+            10_000,
             &inner1.is_running,
             &clock1,
         );
@@ -117,7 +115,6 @@ fn start<
             &*states2,
             &inner.tokens,
             receiver,
-            sender,
             &inner.is_running,
             &clock,
         );
@@ -153,11 +150,12 @@ pub struct TokenState<T> {
     refresh_at: EpochMillis,
     warn_at: EpochMillis,
     expires_at: EpochMillis,
+    scheduled_for: EpochMillis,
+    refresh_pending: bool,
     last_notification_at: Option<EpochMillis>,
     token_provider: Arc<AccessTokenProvider + Send + Sync + 'static>,
     is_initialized: bool,
     is_error: bool,
-    index: usize,
 }
 
 impl<T> Drop for Inner<T> {

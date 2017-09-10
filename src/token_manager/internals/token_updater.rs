@@ -11,7 +11,6 @@ pub struct TokenUpdater<'a, T: 'a> {
     states: &'a [Mutex<TokenState<T>>],
     tokens: &'a BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
     receiver: mpsc::Receiver<ManagerCommand<T>>,
-    sender: mpsc::Sender<ManagerCommand<T>>,
     is_running: &'a AtomicBool,
     clock: &'a Clock,
 }
@@ -21,7 +20,6 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
         states: &'a [Mutex<TokenState<T>>],
         tokens: &'a BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
         receiver: mpsc::Receiver<ManagerCommand<T>>,
-        sender: mpsc::Sender<ManagerCommand<T>>,
         is_running: &'a AtomicBool,
         clock: &'a Clock,
     ) -> Self {
@@ -29,7 +27,6 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
             states,
             tokens,
             receiver,
-            sender,
             is_running,
             clock,
         }
@@ -128,12 +125,6 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                 err
             );
             update_token_err(err, state, token, self.clock);
-            self.sender
-                .send(ManagerCommand::RefreshOnError(
-                    state.index,
-                    self.clock.now(),
-                ))
-                .unwrap();
         } else if state.expires_at < self.clock.now() {
             error!(
                 "Received an error for token '{}' and the token has already expired! \
@@ -142,12 +133,6 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                 err
             );
             update_token_err(err, state, token, self.clock);
-            self.sender
-                .send(ManagerCommand::RefreshOnError(
-                    state.index,
-                    self.clock.now(),
-                ))
-                .unwrap();
         } else {
             error!(
                 "Received an error for token '{}'. Will not update the \
@@ -177,6 +162,8 @@ fn update_token_ok<T: Display>(
     state.last_touched = now;
     state.expires_at = now + expires_in_ms;
     state.refresh_at = now + (expires_in_ms as f32 * state.refresh_threshold) as u64;
+    state.scheduled_for = state.refresh_at;
+    state.refresh_pending = false;
     state.warn_at = now + (expires_in_ms as f32 * state.warning_threshold) as u64;
     state.is_initialized = true;
     state.is_error = false;
@@ -204,6 +191,7 @@ fn update_token_err<T: Display>(
     state.expires_at = now;
     state.refresh_at = now;
     state.warn_at = now;
+    state.scheduled_for = now + 500;
     state.is_initialized = true;
     state.is_error = true;
 }
@@ -269,9 +257,7 @@ mod test {
 
     impl TestClock {
         pub fn new() -> Self {
-            TestClock {
-                time: Rc::new(Cell::new(0)),
-            }
+            TestClock { time: Rc::new(Cell::new(0)) }
         }
 
         pub fn inc(&self, by_ms: u64) {
@@ -296,9 +282,7 @@ mod test {
 
     impl DummyAccessTokenProvider {
         pub fn new() -> Self {
-            DummyAccessTokenProvider {
-                counter: Arc::new(Mutex::new(0)),
-            }
+            DummyAccessTokenProvider { counter: Arc::new(Mutex::new(0)) }
         }
     }
 
@@ -315,10 +299,10 @@ mod test {
         }
     }
 
-    fn create_data() -> (
-        Vec<Mutex<TokenState<&'static str>>>,
-        BTreeMap<&'static str, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
-    ) {
+    fn create_data()
+        -> (Vec<Mutex<TokenState<&'static str>>>,
+            BTreeMap<&'static str, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>)
+    {
         let mut groups = Vec::default();
         groups.push(
             ManagedTokenGroupBuilder::single_token(
@@ -355,17 +339,16 @@ mod test {
         assert_eq!(None, state.last_notification_at);
         assert_eq!(false, state.is_initialized);
         assert_eq!(true, state.is_error);
-        assert_eq!(0, state.index);
     }
 
     #[test]
     fn initializes_token_when_time_did_not_increase() {
-        let (tx, rx) = mpsc::channel();
+        let (_, rx) = mpsc::channel();
         let is_running = AtomicBool::new(true);
         let clock = TestClock::new();
         let (states, tokens) = create_data();
 
-        let updater = TokenUpdater::new(&states, &tokens, rx, tx.clone(), &is_running, &clock);
+        let updater = TokenUpdater::new(&states, &tokens, rx, &is_running, &clock);
 
         clock.set(0);
         updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
@@ -380,7 +363,6 @@ mod test {
             assert_eq!(None, state.last_notification_at);
             assert_eq!(true, state.is_initialized);
             assert_eq!(false, state.is_error);
-            assert_eq!(0, state.index);
         }
         assert_eq!(
             "0",
@@ -398,12 +380,12 @@ mod test {
 
     #[test]
     fn does_initialize_token_twice_when_time_did_not_increase() {
-        let (tx, rx) = mpsc::channel();
+        let (_, rx) = mpsc::channel();
         let is_running = AtomicBool::new(true);
         let clock = TestClock::new();
         let (states, tokens) = create_data();
 
-        let updater = TokenUpdater::new(&states, &tokens, rx, tx.clone(), &is_running, &clock);
+        let updater = TokenUpdater::new(&states, &tokens, rx, &is_running, &clock);
 
         clock.set(0);
         updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
@@ -418,7 +400,6 @@ mod test {
             assert_eq!(None, state.last_notification_at);
             assert_eq!(true, state.is_initialized);
             assert_eq!(false, state.is_error);
-            assert_eq!(0, state.index);
         }
         assert_eq!(
             "0",
@@ -458,12 +439,12 @@ mod test {
 
     #[test]
     fn initializes_token_when_time_increased() {
-        let (tx, rx) = mpsc::channel();
+        let (_, rx) = mpsc::channel();
         let is_running = AtomicBool::new(true);
         let clock = TestClock::new();
         let (states, tokens) = create_data();
 
-        let updater = TokenUpdater::new(&states, &tokens, rx, tx.clone(), &is_running, &clock);
+        let updater = TokenUpdater::new(&states, &tokens, rx, &is_running, &clock);
 
         clock.set(1);
         updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
@@ -478,7 +459,6 @@ mod test {
             assert_eq!(None, state.last_notification_at);
             assert_eq!(true, state.is_initialized);
             assert_eq!(false, state.is_error);
-            assert_eq!(0, state.index);
         }
         assert_eq!(
             "0",
@@ -496,12 +476,12 @@ mod test {
 
     #[test]
     fn updater_workflow() {
-        let (tx, rx) = mpsc::channel();
+        let (_, rx) = mpsc::channel();
         let is_running = AtomicBool::new(true);
         let clock = TestClock::new();
         let (states, tokens) = create_data();
 
-        let updater = TokenUpdater::new(&states, &tokens, rx, tx.clone(), &is_running, &clock);
+        let updater = TokenUpdater::new(&states, &tokens, rx, &is_running, &clock);
 
         clock.set(0);
         updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
@@ -516,7 +496,6 @@ mod test {
             assert_eq!(None, state.last_notification_at);
             assert_eq!(true, state.is_initialized);
             assert_eq!(false, state.is_error);
-            assert_eq!(0, state.index);
         }
         assert_eq!(
             "0",
@@ -545,7 +524,6 @@ mod test {
             assert_eq!(None, state.last_notification_at);
             assert_eq!(true, state.is_initialized);
             assert_eq!(false, state.is_error);
-            assert_eq!(0, state.index);
         }
         assert_eq!(
             "1",

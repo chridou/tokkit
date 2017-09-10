@@ -305,7 +305,10 @@ fn get_with_fallback(
 }
 
 fn get_remote(url: Url, http_client: &Client, parser: &TokenInfoParser) -> Result<TokenInfo> {
-    match http_client.get(url).send() {
+    let mut request_builder = http_client.get(url).map_err(
+        |err| ErrorKind::Other(err.to_string()),
+    )?;
+    match request_builder.send() {
         Ok(ref mut response) => process_response(response, parser),
         Err(err) => Err(ErrorKind::Connection(err.to_string()).into()),
     }
@@ -314,13 +317,13 @@ fn get_remote(url: Url, http_client: &Client, parser: &TokenInfoParser) -> Resul
 fn process_response(response: &mut Response, parser: &TokenInfoParser) -> Result<TokenInfo> {
     let mut body = Vec::new();
     response.read_to_end(&mut body)?;
-    if *response.status() == StatusCode::Ok {
+    if response.status() == StatusCode::Ok {
         let result: TokenInfo = match parser.parse(&body) {
             Ok(info) => info,
             Err(msg) => bail!(ErrorKind::InvalidResponseContent(msg)),
         };
         Ok(result)
-    } else if *response.status() == StatusCode::Unauthorized {
+    } else if response.status() == StatusCode::Unauthorized {
         let msg = str::from_utf8(&body)?;
         bail!(ErrorKind::NotAuthenticated(
             format!("The server refused the token: {}", msg),
