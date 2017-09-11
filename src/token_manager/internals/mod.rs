@@ -50,7 +50,7 @@ fn create_rows<T: Clone>(
                 warn_at: now,
                 expires_at: now,
                 scheduled_for: now,
-                state: TokenState::Uninitialized,
+                token_state: TokenState::Uninitialized,
                 last_notification_at: None,
                 token_provider: group.token_provider.clone(),
             }));
@@ -67,15 +67,16 @@ fn create_tokens<T: Eq + Ord + Clone + Display>(
     let mut idx = 0;
     for group in groups {
         for managed_token in &group.managed_tokens {
-            tokens.insert(
-                managed_token.token_id.clone(),
-                (
-                    idx,
-                    Mutex::new(Err(ErrorKind::NotInitialized(
-                        managed_token.token_id.to_string(),
-                    ))),
-                ),
-            );
+            tokens.insert(managed_token.token_id.clone(), (
+                idx,
+                Mutex::new(Err(
+                    ErrorKind::NotInitialized(
+                        managed_token
+                            .token_id
+                            .to_string(),
+                    ),
+                )),
+            ));
             idx += 1;
         }
     }
@@ -127,10 +128,12 @@ pub struct Inner<T> {
 impl<T: Eq + Ord + Clone + Display> Inner<T> {
     pub fn get_access_token(&self, token_id: &T) -> Result<AccessToken> {
         match self.tokens.get(&token_id) {
-            Some(&(_, ref guard)) => match &*guard.lock().unwrap() {
-                &Ok(ref token) => Ok(token.clone()),
-                &Err(ref err) => bail!(err.clone()),
-            },
+            Some(&(_, ref guard)) => {
+                match &*guard.lock().unwrap() {
+                    &Ok(ref token) => Ok(token.clone()),
+                    &Err(ref err) => bail!(err.clone()),
+                }
+            }
             None => bail!(ErrorKind::NoToken(token_id.to_string())),
         }
     }
@@ -156,7 +159,8 @@ impl TokenState {
 
     pub fn is_uninitialized(&self) -> bool {
         match *self {
-            TokenState::Uninitialized | TokenState::Initializing => true,
+            TokenState::Uninitialized |
+            TokenState::Initializing => true,
             _ => false,
         }
     }
@@ -172,7 +176,7 @@ pub struct TokenRow<T> {
     warn_at: EpochMillis,
     expires_at: EpochMillis,
     scheduled_for: EpochMillis,
-    state: TokenState,
+    token_state: TokenState,
     last_notification_at: Option<EpochMillis>,
     token_provider: Arc<AccessTokenProvider + Send + Sync + 'static>,
 }
@@ -220,11 +224,7 @@ fn diff_millis(start_millis: u64, end_millis: u64) -> u64 {
 }
 
 fn minus_millis(from: u64, subtract: u64) -> u64 {
-    if subtract > from {
-        0
-    } else {
-        from - subtract
-    }
+    if subtract > from { 0 } else { from - subtract }
 }
 
 fn elapsed_millis_from(start_millis: u64, clock: &Clock) -> u64 {

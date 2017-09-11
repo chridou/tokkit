@@ -62,7 +62,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
             let row = &mut *row.lock().unwrap();
             if row.scheduled_for <= self.clock.now() {
                 is_refresh_pending = true;
-                row.state = match row.state {
+                row.token_state = match row.token_state {
                     TokenState::Uninitialized => {
                         if let Err(err) = self.sender
                             .send(ManagerCommand::ScheduledRefresh(idx, self.clock.now()))
@@ -96,7 +96,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
                 };
             } else {
                 next_at = cmp::min(next_at, row.scheduled_for);
-                is_refresh_pending = is_refresh_pending || row.state.is_refresh_pending();
+                is_refresh_pending = is_refresh_pending || row.token_state.is_refresh_pending();
             }
             self.check_notifications(row);
         }
@@ -115,9 +115,9 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
             true
         };
         if notify {
-            let notified = match row.state {
+            let notified = match row.token_state {
                 TokenState::Error | TokenState::ErrorPending => {
-                    warn!("Token '{}' is in error state.", row.token_id);
+                    warn!("Token '{}' is in error row.", row.token_id);
                     true
                 }
                 TokenState::Ok | TokenState::OkPending => if row.expires_at <= now {
@@ -190,7 +190,7 @@ mod test {
         }
     }
 
-    fn create_token_states() -> Vec<Mutex<TokenRow<&'static str>>> {
+    fn create_token_rows() -> Vec<Mutex<TokenRow<&'static str>>> {
         let mut groups = Vec::default();
         groups.push(
             ManagedTokenGroupBuilder::single_token(
@@ -200,7 +200,7 @@ mod test {
             ).build()
                 .unwrap(),
         );
-        create_states(groups, 0)
+        create_rows(groups, 0)
     }
 
     #[test]
@@ -213,20 +213,18 @@ mod test {
 
     #[test]
     fn initial_state_is_correct() {
-        let states = create_token_states();
-        let state = states[0].lock().unwrap();
-        assert_eq!("token", state.token_id);
-        assert_eq!(vec![Scope::new("scope")], state.scopes);
-        assert_eq!(0.75, state.refresh_threshold);
-        assert_eq!(0.85, state.warning_threshold);
-        assert_eq!(0, state.refresh_at);
-        assert_eq!(0, state.warn_at);
-        assert_eq!(0, state.expires_at);
-        assert_eq!(0, state.scheduled_for);
-        assert_eq!(false, state.refresh_pending);
-        assert_eq!(None, state.last_notification_at);
-        assert_eq!(false, state.is_initialized);
-        assert_eq!(true, state.is_error);
+        let rows = create_token_rows();
+        let row = rows[0].lock().unwrap();
+        assert_eq!("token", row.token_id);
+        assert_eq!(vec![Scope::new("scope")], row.scopes);
+        assert_eq!(0.75, row.refresh_threshold);
+        assert_eq!(0.85, row.warning_threshold);
+        assert_eq!(0, row.refresh_at);
+        assert_eq!(0, row.warn_at);
+        assert_eq!(0, row.expires_at);
+        assert_eq!(0, row.scheduled_for);
+        assert_eq!(TokenState::Uninitialized, row.token_state);
+        assert_eq!(None, row.last_notification_at);
     }
 
     #[test]
@@ -234,271 +232,337 @@ mod test {
         let (tx, rx) = mpsc::channel();
         let is_running = AtomicBool::new(true);
         let clock = TestClock::new();
-        let states = create_token_states();
+        let rows = create_token_rows();
 
-        let scheduler = RefreshScheduler::new(&states, &tx, 0, 1000, &is_running, &clock);
+        let scheduler = RefreshScheduler::new(&rows, &tx, 0, 1000, &is_running, &clock);
 
-        scheduler.do_a_scheduling_round();
-        let msg = rx.recv().unwrap();
-        assert_eq!(ManagerCommand::ScheduledRefresh(0, 0), msg);
         {
-            let state = states[0].lock().unwrap();
-            assert_eq!("token", state.token_id);
-            assert_eq!(vec![Scope::new("scope")], state.scopes);
-            assert_eq!(0.75, state.refresh_threshold);
-            assert_eq!(0.85, state.warning_threshold);
-            assert_eq!(0, state.refresh_at);
-            assert_eq!(0, state.warn_at);
-            assert_eq!(0, state.expires_at);
-            assert_eq!(0, state.scheduled_for);
-            assert_eq!(true, state.refresh_pending);
-            assert_eq!(None, state.last_notification_at);
-            assert_eq!(false, state.is_initialized);
-            assert_eq!(true, state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(0, row.refresh_at);
+            assert_eq!(0, row.warn_at);
+            assert_eq!(0, row.expires_at);
+            assert_eq!(0, row.scheduled_for);
+            assert_eq!(TokenState::Uninitialized, row.token_state);
+            assert_eq!(None, row.last_notification_at);
+        }
+
+        clock.set(100);
+        scheduler.do_a_scheduling_round();
+
+        let msg = rx.recv().unwrap();
+        assert_eq!(ManagerCommand::ScheduledRefresh(0, 100), msg);
+        {
+            let row = rows[0].lock().unwrap();
+            assert_eq!(0, row.refresh_at);
+            assert_eq!(0, row.warn_at);
+            assert_eq!(0, row.expires_at);
+            assert_eq!(0, row.scheduled_for);
+            assert_eq!(TokenState::Initializing, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
 
         clock.inc(1000);
-
         scheduler.do_a_scheduling_round();
-        let msg = rx.recv().unwrap();
-        assert_eq!(ManagerCommand::ScheduledRefresh(1000, 0), msg);
+
+        let msg = rx.try_recv();
+        assert_eq!(true, msg.is_err());
         {
-            let state = states[0].lock().unwrap();
-            assert_eq!("token", state.token_id);
-            assert_eq!(vec![Scope::new("scope")], state.scopes);
-            assert_eq!(0.75, state.refresh_threshold);
-            assert_eq!(0.85, state.warning_threshold);
-            assert_eq!(0, state.refresh_at);
-            assert_eq!(0, state.warn_at);
-            assert_eq!(0, state.expires_at);
-            assert_eq!(0, state.scheduled_for);
-            assert_eq!(true, state.refresh_pending);
-            assert_eq!(None, state.last_notification_at);
-            assert_eq!(false, state.is_initialized);
-            assert_eq!(true, state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(0, row.refresh_at);
+            assert_eq!(0, row.warn_at);
+            assert_eq!(0, row.expires_at);
+            assert_eq!(0, row.scheduled_for);
+            assert_eq!(TokenState::Initializing, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
     }
 
-    //#[test]
+
+    #[test]
     fn scheduler_workflow() {
         let (tx, rx) = mpsc::channel();
         let is_running = AtomicBool::new(true);
         let clock = TestClock::new();
-        let states = create_token_states();
+        let rows = create_token_rows();
 
-        let scheduler = RefreshScheduler::new(&states, &tx, 0, 1000, &is_running, &clock);
+        let scheduler = RefreshScheduler::new(&rows, &tx, 0, 1000, &is_running, &clock);
+
+        {
+            let row = rows[0].lock().unwrap();
+            assert_eq!(0, row.refresh_at);
+            assert_eq!(0, row.warn_at);
+            assert_eq!(0, row.expires_at);
+            assert_eq!(0, row.scheduled_for);
+            assert_eq!(TokenState::Uninitialized, row.token_state);
+            assert_eq!(None, row.last_notification_at);
+        }
 
         clock.set(100);
         scheduler.do_a_scheduling_round();
+
         let msg = rx.try_recv().unwrap();
         assert_eq!(ManagerCommand::ScheduledRefresh(0, 100), msg);
         {
-            let state = states[0].lock().unwrap();
-            assert_eq!("token", state.token_id);
-            assert_eq!(vec![Scope::new("scope")], state.scopes);
-            assert_eq!(0.75, state.refresh_threshold);
-            assert_eq!(0.85, state.warning_threshold);
-            assert_eq!(0, state.refresh_at);
-            assert_eq!(0, state.warn_at);
-            assert_eq!(0, state.expires_at);
-            assert_eq!(0, state.scheduled_for);
-            assert_eq!(true, state.refresh_pending);
-            assert_eq!(None, state.last_notification_at);
-            assert_eq!(false, state.is_initialized);
-            assert_eq!(true, state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(0, row.refresh_at);
+            assert_eq!(0, row.warn_at);
+            assert_eq!(0, row.expires_at);
+            assert_eq!(0, row.scheduled_for);
+            assert_eq!(TokenState::Initializing, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
 
         // The token comes in at 1000
         clock.set(1000);
         {
-            let mut state = states[0].lock().unwrap();
-            state.refresh_at = clock.now() + 7500;
-            state.warn_at = clock.now() + 8500;
-            state.expires_at = clock.now() + 10000;
-            state.scheduled_for = clock.now() + 7500;
-            state.refresh_pending = false;
-            state.is_initialized = true;
-            state.is_error = false;
+            let mut row = rows[0].lock().unwrap();
+            row.refresh_at = clock.now() + 7500;
+            row.warn_at = clock.now() + 8500;
+            row.expires_at = clock.now() + 10000;
+            row.scheduled_for = clock.now() + 7500;
+            row.token_state = TokenState::Ok;
         }
         scheduler.do_a_scheduling_round();
+
         let msg = rx.try_recv();
         assert_eq!(true, msg.is_err());
         {
-            let state = states[0].lock().unwrap();
-            assert_eq!(8500, state.refresh_at);
-            assert_eq!(9500, state.warn_at);
-            assert_eq!(11000, state.expires_at);
-            assert_eq!(8500, state.scheduled_for);
-            assert_eq!(false, state.refresh_pending);
-            assert_eq!(None, state.last_notification_at);
-            assert_eq!(true, state.is_initialized);
-            assert_eq!(false, state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(8500, row.refresh_at);
+            assert_eq!(9500, row.warn_at);
+            assert_eq!(11000, row.expires_at);
+            assert_eq!(8500, row.scheduled_for);
+            assert_eq!(TokenState::Ok, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
 
-
-        // at 2000 nothing should happen
-        clock.set(2000);
-
+        // at 1001 nothing should happen
+        clock.set(1001);
         scheduler.do_a_scheduling_round();
+
         let msg = rx.try_recv();
         assert_eq!(true, msg.is_err());
         {
-            let state = states[0].lock().unwrap();
-            assert_eq!(8500, state.refresh_at);
-            assert_eq!(9500, state.warn_at);
-            assert_eq!(11000, state.expires_at);
-            assert_eq!(8500, state.scheduled_for);
-            assert_eq!(false, state.refresh_pending);
-            assert_eq!(None, state.last_notification_at);
-            assert_eq!(true, state.is_initialized);
-            assert_eq!(false, state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(8500, row.refresh_at);
+            assert_eq!(9500, row.warn_at);
+            assert_eq!(11000, row.expires_at);
+            assert_eq!(8500, row.scheduled_for);
+            assert_eq!(TokenState::Ok, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
 
 
         // at 8499 still nothing should happen
         clock.set(8499);
         scheduler.do_a_scheduling_round();
+
         let msg = rx.try_recv();
         assert_eq!(true, msg.is_err());
         {
-            let state = states[0].lock().unwrap();
-            assert_eq!(8500, state.refresh_at);
-            assert_eq!(9500, state.warn_at);
-            assert_eq!(11000, state.expires_at);
-            assert_eq!(8500, state.scheduled_for);
-            assert_eq!(false, state.refresh_pending);
-            assert_eq!(None, state.last_notification_at);
-            assert_eq!(true, state.is_initialized);
-            assert_eq!(false, state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(8500, row.refresh_at);
+            assert_eq!(9500, row.warn_at);
+            assert_eq!(11000, row.expires_at);
+            assert_eq!(8500, row.scheduled_for);
+            assert_eq!(TokenState::Ok, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
 
         // at 8500 a refresh request should be sent
         clock.set(8500);
         scheduler.do_a_scheduling_round();
+
         let msg = rx.try_recv().unwrap();
         assert_eq!(ManagerCommand::ScheduledRefresh(0, 8500), msg);
         {
-            let state = states[0].lock().unwrap();
-            assert_eq!(8500, state.refresh_at);
-            assert_eq!(9500, state.warn_at);
-            assert_eq!(11000, state.expires_at);
-            assert_eq!(8500, state.scheduled_for);
-            assert_eq!(true, state.refresh_pending);
-            assert_eq!(None, state.last_notification_at);
-            assert_eq!(true, state.is_initialized);
-            assert_eq!(false, state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(8500, row.refresh_at);
+            assert_eq!(9500, row.warn_at);
+            assert_eq!(11000, row.expires_at);
+            assert_eq!(8500, row.scheduled_for);
+            assert_eq!(TokenState::OkPending, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
 
         // at 9499 nothing should happen
         clock.set(9499);
         scheduler.do_a_scheduling_round();
+
         let msg = rx.try_recv();
         assert_eq!(true, msg.is_err());
         {
-            let state = states[0].lock().unwrap();
-            assert_eq!(8500, state.refresh_at);
-            assert_eq!(9500, state.warn_at);
-            assert_eq!(11000, state.expires_at);
-            assert_eq!(8500, state.scheduled_for);
-            assert_eq!(true, state.refresh_pending);
-            assert_eq!(None, state.last_notification_at);
-            assert_eq!(true, state.is_initialized);
-            assert_eq!(false, state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(8500, row.refresh_at);
+            assert_eq!(9500, row.warn_at);
+            assert_eq!(11000, row.expires_at);
+            assert_eq!(8500, row.scheduled_for);
+            assert_eq!(TokenState::OkPending, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
 
         // at 9500 a notification should have taken place
         clock.set(9500);
         scheduler.do_a_scheduling_round();
-        let msg = rx.recv().unwrap();
-        assert_eq!(ManagerCommand::ScheduledRefresh(0, 9500), msg);
-        {
-            let state = states[0].lock().unwrap();
-            assert_eq!(8500, state.refresh_at);
-            assert_eq!(9500, state.warn_at);
-            assert_eq!(11000, state.expires_at);
-            assert_eq!(8500, state.scheduled_for);
-            assert_eq!(true, state.refresh_pending);
-            assert_eq!(Some(9500), state.last_notification_at);
-            assert_eq!(true, state.is_initialized);
-            assert_eq!(false, state.is_error);
-        }
 
-
-
-
-        clock.set(10499);
-        scheduler.do_a_scheduling_round();
-        let msg = rx.recv().unwrap();
-        assert_eq!(ManagerCommand::ScheduledRefresh(0, 10499), msg);
-        {
-            let state = states[0].lock().unwrap();
-            assert_eq!(8500, state.refresh_at);
-            assert_eq!(9500, state.warn_at);
-            assert_eq!(11000, state.expires_at);
-            assert_eq!(Some(9500), state.last_notification_at);
-            assert_eq!(true, state.is_initialized);
-            assert_eq!(false, state.is_error);
-        }
-
-        clock.set(10500);
-        scheduler.do_a_scheduling_round();
-        let msg = rx.recv().unwrap();
-        assert_eq!(ManagerCommand::ScheduledRefresh(0, 10500), msg);
-        {
-            let state = states[0].lock().unwrap();
-            assert_eq!(8500, state.refresh_at);
-            assert_eq!(9500, state.warn_at);
-            assert_eq!(11000, state.expires_at);
-            assert_eq!(Some(10500), state.last_notification_at);
-            assert_eq!(true, state.is_initialized);
-            assert_eq!(false, state.is_error);
-        }
-
-        // Go into error state
-        {
-            let mut state = states[0].lock().unwrap();
-            state.is_error = true;
-        }
-
-        clock.set(11499);
-        scheduler.do_a_scheduling_round();
         let msg = rx.try_recv();
         assert_eq!(true, msg.is_err());
         {
-            let state = states[0].lock().unwrap();
-            assert_eq!(Some(10500), state.last_notification_at);
-            assert_eq!(true, state.is_initialized);
-            assert_eq!(true, state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(8500, row.refresh_at);
+            assert_eq!(9500, row.warn_at);
+            assert_eq!(11000, row.expires_at);
+            assert_eq!(8500, row.scheduled_for);
+            assert_eq!(TokenState::OkPending, row.token_state);
+            assert_eq!(Some(9500), row.last_notification_at);
         }
+
+        // at 10499 nothing should happen
+        clock.set(10499);
+        scheduler.do_a_scheduling_round();
+
+        let msg = rx.try_recv();
+        assert_eq!(true, msg.is_err());
+        {
+            let row = rows[0].lock().unwrap();
+            assert_eq!(8500, row.refresh_at);
+            assert_eq!(9500, row.warn_at);
+            assert_eq!(11000, row.expires_at);
+            assert_eq!(8500, row.scheduled_for);
+            assert_eq!(TokenState::OkPending, row.token_state);
+            assert_eq!(Some(9500), row.last_notification_at);
+        }
+
+        // At 10500 the next notification should have taken place
+        clock.set(10500);
+        scheduler.do_a_scheduling_round();
+
+        let msg = rx.try_recv();
+        assert_eq!(true, msg.is_err());
+        {
+            let row = rows[0].lock().unwrap();
+            assert_eq!(8500, row.refresh_at);
+            assert_eq!(9500, row.warn_at);
+            assert_eq!(11000, row.expires_at);
+            assert_eq!(8500, row.scheduled_for);
+            assert_eq!(TokenState::OkPending, row.token_state);
+            assert_eq!(Some(10500), row.last_notification_at);
+        }
+
+
+        // At 10600 the token comes in
+        clock.set(10600);
+        {
+            let mut row = rows[0].lock().unwrap();
+            row.refresh_at = clock.now() + 7500;
+            row.warn_at = clock.now() + 8500;
+            row.expires_at = clock.now() + 10000;
+            row.scheduled_for = clock.now() + 7500;
+            row.token_state = TokenState::Ok;
+        }
+        scheduler.do_a_scheduling_round();
+
+        // At 11000 nothing should happen
+        let msg = rx.try_recv();
+        assert_eq!(true, msg.is_err());
+        {
+            let row = rows[0].lock().unwrap();
+            assert_eq!(10600 + 7500, row.refresh_at);
+            assert_eq!(10600 + 8500, row.warn_at);
+            assert_eq!(10600 + 10000, row.expires_at);
+            assert_eq!(10600 + 7500, row.scheduled_for);
+            assert_eq!(TokenState::Ok, row.token_state);
+            assert_eq!(Some(10500), row.last_notification_at);
+        }
+
+
+        // at 18100 the next token is requested
+        clock.set(18100);
+        scheduler.do_a_scheduling_round();
+
+        let msg = rx.try_recv().unwrap();
+        assert_eq!(ManagerCommand::ScheduledRefresh(0, 18100), msg);
+        {
+            let row = rows[0].lock().unwrap();
+            assert_eq!(10600 + 7500, row.refresh_at);
+            assert_eq!(10600 + 8500, row.warn_at);
+            assert_eq!(10600 + 10000, row.expires_at);
+            assert_eq!(10600 + 7500, row.scheduled_for);
+            assert_eq!(TokenState::OkPending, row.token_state);
+            assert_eq!(Some(10500), row.last_notification_at);
+        }
+
+        // at 20000 the token enters error state
+        // and only a notification takes place
+        clock.set(20000);
+        {
+            let mut row = rows[0].lock().unwrap();
+            row.refresh_at = clock.now();
+            row.warn_at = clock.now();
+            row.expires_at = clock.now();
+            row.scheduled_for = clock.now() + 100;
+            row.token_state = TokenState::Error;
+        }
+        scheduler.do_a_scheduling_round();
+
+        let msg = rx.try_recv();
+        assert_eq!(true, msg.is_err());
+        {
+            let row = rows[0].lock().unwrap();
+            assert_eq!(20000, row.refresh_at);
+            assert_eq!(20000, row.warn_at);
+            assert_eq!(20000, row.expires_at);
+            assert_eq!(20100, row.scheduled_for);
+            assert_eq!(TokenState::Error, row.token_state);
+            assert_eq!(Some(20000), row.last_notification_at);
+        }
+
+        // at 20100 a request for a refresh on error is scheduled
+        clock.set(20100);
+        scheduler.do_a_scheduling_round();
+
+        let msg = rx.try_recv().unwrap();
+        assert_eq!(ManagerCommand::RefreshOnError(0, 20100), msg);
+        {
+            let row = rows[0].lock().unwrap();
+            assert_eq!(20000, row.refresh_at);
+            assert_eq!(20000, row.warn_at);
+            assert_eq!(20000, row.expires_at);
+            assert_eq!(20100, row.scheduled_for);
+            assert_eq!(TokenState::ErrorPending, row.token_state);
+            assert_eq!(Some(20000), row.last_notification_at);
+        }
+
+        /*
 
         clock.set(11500);
         scheduler.do_a_scheduling_round();
         let msg = rx.try_recv();
         assert_eq!(true, msg.is_err());
         {
-            let state = states[0].lock().unwrap();
+            let row = rows[0].lock().unwrap();
             // error has been notified
-            assert_eq!(Some(11500), state.last_notification_at);
-            assert_eq!(true, state.is_initialized);
-            assert_eq!(true, state.is_error);
+            assert_eq!(Some(11500), row.last_notification_at);
+            assert_eq!(true, row.is_initialized);
+            assert_eq!(true, row.is_error);
         }
 
         // receive new token
         clock.set(12000);
         {
-            let mut state = states[0].lock().unwrap();
-            state.refresh_at = clock.now() + 7500; // 19500
-            state.warn_at = clock.now() + 8500;
-            state.expires_at = clock.now() + 10000;
-            state.is_error = false;
+            let mut row = rows[0].lock().unwrap();
+            row.refresh_at = clock.now() + 7500; // 19500
+            row.warn_at = clock.now() + 8500;
+            row.expires_at = clock.now() + 10000;
+            row.is_error = false;
         }
 
         scheduler.do_a_scheduling_round();
         let msg = rx.try_recv();
         assert_eq!(true, msg.is_err());
         {
-            let state = states[0].lock().unwrap();
-            assert_eq!(Some(11500), state.last_notification_at);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(Some(11500), row.last_notification_at);
         }
 
         clock.set(19500); // refresh now
@@ -506,8 +570,8 @@ mod test {
         let msg = rx.recv().unwrap();
         assert_eq!(ManagerCommand::ScheduledRefresh(0, 19500), msg);
         {
-            let state = states[0].lock().unwrap();
-            assert_eq!(Some(11500), state.last_notification_at);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(Some(11500), row.last_notification_at);
         }
 
         clock.set(20500); // warn again
@@ -515,8 +579,9 @@ mod test {
         let msg = rx.recv().unwrap();
         assert_eq!(ManagerCommand::ScheduledRefresh(0, 20500), msg);
         {
-            let state = states[0].lock().unwrap();
-            assert_eq!(Some(20500), state.last_notification_at);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(Some(20500), row.last_notification_at);
         }
+        */
     }
 }
