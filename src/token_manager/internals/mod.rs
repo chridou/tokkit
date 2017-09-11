@@ -20,7 +20,7 @@ pub fn initialize<
     clock: C,
 ) -> (Arc<Inner<T>>, mpsc::Sender<ManagerCommand<T>>) {
     let tokens = create_tokens(&groups);
-    let states = create_states(groups, clock.now());
+    let rows = create_rows(groups, clock.now());
 
     let (tx, rx) = mpsc::channel::<ManagerCommand<T>>();
 
@@ -28,19 +28,19 @@ pub fn initialize<
 
     let inner = Arc::new(Inner { tokens, is_running });
 
-    start(states, inner.clone(), tx.clone(), rx, clock);
+    start(rows, inner.clone(), tx.clone(), rx, clock);
 
     (inner.clone(), tx)
 }
 
-fn create_states<T: Clone>(
+fn create_rows<T: Clone>(
     groups: Vec<ManagedTokenGroup<T>>,
     now: EpochMillis,
-) -> Vec<Mutex<TokenState<T>>> {
+) -> Vec<Mutex<TokenRow<T>>> {
     let mut states = Vec::new();
     for group in groups {
         for managed_token in group.managed_tokens {
-            states.push(Mutex::new(TokenState {
+            states.push(Mutex::new(TokenRow {
                 token_id: managed_token.token_id.clone(),
                 scopes: managed_token.scopes,
                 refresh_threshold: group.refresh_threshold,
@@ -50,11 +50,9 @@ fn create_states<T: Clone>(
                 warn_at: now,
                 expires_at: now,
                 scheduled_for: now,
-                refresh_pending: false,
+                state: TokenState::Uninitialized,
                 last_notification_at: None,
                 token_provider: group.token_provider.clone(),
-                is_initialized: false,
-                is_error: true, // unitialized is also an error.
             }));
         }
     }
@@ -69,16 +67,15 @@ fn create_tokens<T: Eq + Ord + Clone + Display>(
     let mut idx = 0;
     for group in groups {
         for managed_token in &group.managed_tokens {
-            tokens.insert(managed_token.token_id.clone(), (
-                idx,
-                Mutex::new(Err(
-                    ErrorKind::NotInitialized(
-                        managed_token
-                            .token_id
-                            .to_string(),
-                    ),
-                )),
-            ));
+            tokens.insert(
+                managed_token.token_id.clone(),
+                (
+                    idx,
+                    Mutex::new(Err(ErrorKind::NotInitialized(
+                        managed_token.token_id.to_string(),
+                    ))),
+                ),
+            );
             idx += 1;
         }
     }
@@ -89,19 +86,19 @@ fn start<
     T: Eq + Ord + Send + Sync + Clone + Display + 'static,
     C: Clock + Clone + Send + 'static,
 >(
-    states: Vec<Mutex<TokenState<T>>>,
+    rows: Vec<Mutex<TokenRow<T>>>,
     inner: Arc<Inner<T>>,
     sender: mpsc::Sender<ManagerCommand<T>>,
     receiver: mpsc::Receiver<ManagerCommand<T>>,
     clock: C,
 ) {
-    let states1 = Arc::new(states);
-    let states2 = states1.clone();
+    let rows1 = Arc::new(rows);
+    let rows2 = rows1.clone();
     let inner1 = inner.clone();
     let clock1 = clock.clone();
     thread::spawn(move || {
         let scheduler = request_scheduler::RefreshScheduler::new(
-            &*states1,
+            &*rows1,
             &sender,
             500,
             10_000,
@@ -112,7 +109,7 @@ fn start<
     });
     thread::spawn(move || {
         let token_updater = token_updater::TokenUpdater::new(
-            &*states2,
+            &*rows2,
             &inner.tokens,
             receiver,
             &inner.is_running,
@@ -130,18 +127,42 @@ pub struct Inner<T> {
 impl<T: Eq + Ord + Clone + Display> Inner<T> {
     pub fn get_access_token(&self, token_id: &T) -> Result<AccessToken> {
         match self.tokens.get(&token_id) {
-            Some(&(_, ref guard)) => {
-                match &*guard.lock().unwrap() {
-                    &Ok(ref token) => Ok(token.clone()),
-                    &Err(ref err) => bail!(err.clone()),
-                }
-            }
+            Some(&(_, ref guard)) => match &*guard.lock().unwrap() {
+                &Ok(ref token) => Ok(token.clone()),
+                &Err(ref err) => bail!(err.clone()),
+            },
             None => bail!(ErrorKind::NoToken(token_id.to_string())),
         }
     }
 }
 
-pub struct TokenState<T> {
+#[derive(PartialEq, Eq, Debug)]
+pub enum TokenState {
+    Uninitialized,
+    Initializing,
+    Ok,
+    OkPending,
+    Error,
+    ErrorPending,
+}
+
+impl TokenState {
+    pub fn is_refresh_pending(&self) -> bool {
+        match *self {
+            TokenState::Initializing | TokenState::OkPending | TokenState::ErrorPending => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_uninitialized(&self) -> bool {
+        match *self {
+            TokenState::Uninitialized | TokenState::Initializing => true,
+            _ => false,
+        }
+    }
+}
+
+pub struct TokenRow<T> {
     token_id: T,
     scopes: Vec<Scope>,
     refresh_threshold: f32,
@@ -151,11 +172,9 @@ pub struct TokenState<T> {
     warn_at: EpochMillis,
     expires_at: EpochMillis,
     scheduled_for: EpochMillis,
-    refresh_pending: bool,
+    state: TokenState,
     last_notification_at: Option<EpochMillis>,
     token_provider: Arc<AccessTokenProvider + Send + Sync + 'static>,
-    is_initialized: bool,
-    is_error: bool,
 }
 
 impl<T> Drop for Inner<T> {
@@ -201,7 +220,11 @@ fn diff_millis(start_millis: u64, end_millis: u64) -> u64 {
 }
 
 fn minus_millis(from: u64, subtract: u64) -> u64 {
-    if subtract > from { 0 } else { from - subtract }
+    if subtract > from {
+        0
+    } else {
+        from - subtract
+    }
 }
 
 fn elapsed_millis_from(start_millis: u64, clock: &Clock) -> u64 {

@@ -1,14 +1,12 @@
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::sync::mpsc;
-use std::thread;
-use std::time::Duration;
 use backoff::{Error as BError, ExponentialBackoff, Operation};
 
 use super::*;
 
 pub struct TokenUpdater<'a, T: 'a> {
-    states: &'a [Mutex<TokenState<T>>],
+    rows: &'a [Mutex<TokenRow<T>>],
     tokens: &'a BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
     receiver: mpsc::Receiver<ManagerCommand<T>>,
     is_running: &'a AtomicBool,
@@ -17,14 +15,14 @@ pub struct TokenUpdater<'a, T: 'a> {
 
 impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
     pub fn new(
-        states: &'a [Mutex<TokenState<T>>],
+        rows: &'a [Mutex<TokenRow<T>>],
         tokens: &'a BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
         receiver: mpsc::Receiver<ManagerCommand<T>>,
         is_running: &'a AtomicBool,
         clock: &'a Clock,
     ) -> Self {
         TokenUpdater {
-            states,
+            rows,
             tokens,
             receiver,
             is_running,
@@ -61,30 +59,26 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
     fn on_command(&self, cmd: ManagerCommand<T>) -> bool {
         match cmd {
             ManagerCommand::ScheduledRefresh(idx, timestamp) => {
-                let state = &self.states[idx];
-                let token_id = &state.lock().unwrap().token_id.clone();
+                let row = &self.rows[idx];
+                let token_id = &row.lock().unwrap().token_id.clone();
                 debug!("Scheduled refresh for token '{}'", token_id);
                 let &(_, ref token) = self.tokens.get(token_id).unwrap();
-                self.refresh_token(state, token, timestamp);
+                self.refresh_token(row, token, timestamp);
                 true
             }
             ManagerCommand::ForceRefresh(token_id, timestamp) => {
                 info!("Forced refresh for token '{}'", token_id);
                 let &(idx, ref token) = self.tokens.get(&token_id).unwrap();
-                let state = &self.states[idx];
+                let state = &self.rows[idx];
                 self.refresh_token(state, token, timestamp);
                 true
             }
             ManagerCommand::RefreshOnError(idx, timestamp) => {
-                // This is a temporarly hack
-                // and we need a better way not to
-                // spam the authorization server....
-                thread::sleep(Duration::from_millis(713));
-                let state = &self.states[idx];
-                let token_id = &state.lock().unwrap().token_id.clone();
+                let row = &self.rows[idx];
+                let token_id = &row.lock().unwrap().token_id.clone();
                 info!("Refresh on error for token '{}'", token_id);
                 let &(_, ref token) = self.tokens.get(token_id).unwrap();
-                self.refresh_token(state, token, timestamp);
+                self.refresh_token(row, token, timestamp);
                 true
             }
         }
@@ -92,18 +86,18 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
 
     fn refresh_token(
         &self,
-        state: &Mutex<TokenState<T>>,
+        row: &Mutex<TokenRow<T>>,
         token: &Mutex<StdResult<AccessToken, ErrorKind>>,
         command_timestamp: u64,
     ) {
-        let state: &mut TokenState<T> = &mut *state.lock().unwrap();
-        if state.last_touched <= command_timestamp || !state.is_initialized {
-            match call_token_service(&*state.token_provider, &state.scopes) {
+        let row: &mut TokenRow<T> = &mut *row.lock().unwrap();
+        if row.last_touched <= command_timestamp || row.state.is_uninitialized() {
+            match call_token_service(&*row.token_provider, &row.scopes) {
                 Ok(rsp) => {
                     debug!("Update received token data");
-                    update_token_ok(rsp, state, token, self.clock);
+                    update_token_ok(rsp, row, token, self.clock);
                 }
-                Err(err) => self.handle_error(err, state, token),
+                Err(err) => self.handle_error(err, row, token),
             }
         } else {
             info!("Skipping refresh because the command was too old.");
@@ -113,34 +107,46 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
     fn handle_error(
         &self,
         err: AccessTokenProviderError,
-        state: &mut TokenState<T>,
+        row: &mut TokenRow<T>,
         token: &Mutex<StdResult<AccessToken, ErrorKind>>,
     ) {
-        if state.is_error {
-            error!(
-                "Received an error for token '{}' and the token is already \
-                 in error state! \
-                 Error: {}",
-                state.token_id,
-                err
-            );
-            update_token_err(err, state, token, self.clock);
-        } else if state.expires_at < self.clock.now() {
-            error!(
-                "Received an error for token '{}' and the token has already expired! \
-                 Error: {}",
-                state.token_id,
-                err
-            );
-            update_token_err(err, state, token, self.clock);
-        } else {
-            error!(
-                "Received an error for token '{}'. Will not update the \
-                 token because it is still valid. \
-                 Error: {}",
-                state.token_id,
-                err
-            );
+        match row.state {
+            TokenState::Uninitialized | TokenState::Initializing => {
+                error!(
+                    "Received an error for token '{}' which is not even initialized! \
+                     Error: {}",
+                    row.token_id,
+                    err
+                );
+                update_token_err(err, row, token, self.clock);
+            }
+            TokenState::Ok | TokenState::OkPending => if row.expires_at <= self.clock.now() {
+                error!(
+                    "Received an error for token '{}' and the token has already expired! \
+                     Error: {}",
+                    row.token_id,
+                    err
+                );
+                update_token_err(err, row, token, self.clock);
+            } else {
+                error!(
+                    "Received an error for token '{}'. Will not update the \
+                     token because it is still valid. \
+                     Error: {}",
+                    row.token_id,
+                    err
+                );
+            },
+            TokenState::Error | TokenState::ErrorPending => {
+                error!(
+                    "Received an error for token '{}' and the token is already \
+                     in error state! \
+                     Error: {}",
+                    row.token_id,
+                    err
+                );
+                update_token_err(err, row, token, self.clock);
+            }
         }
     }
 }
@@ -149,7 +155,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
 
 fn update_token_ok<T: Display>(
     rsp: AuthorizationServerResponse,
-    state: &mut TokenState<T>,
+    row: &mut TokenRow<T>,
     token: &Mutex<StdResult<AccessToken, ErrorKind>>,
     clock: &Clock,
 ) {
@@ -158,28 +164,26 @@ fn update_token_ok<T: Display>(
     };
     let now = clock.now();
     let expires_in_ms = millis_from_duration(rsp.expires_in);
-    let old_last_touched = state.last_touched;
-    state.last_touched = now;
-    state.expires_at = now + expires_in_ms;
-    state.refresh_at = now + (expires_in_ms as f32 * state.refresh_threshold) as u64;
-    state.scheduled_for = state.refresh_at;
-    state.refresh_pending = false;
-    state.warn_at = now + (expires_in_ms as f32 * state.warning_threshold) as u64;
-    state.is_initialized = true;
-    state.is_error = false;
+    let old_last_touched = row.last_touched;
+    row.last_touched = now;
+    row.expires_at = now + expires_in_ms;
+    row.refresh_at = now + (expires_in_ms as f32 * row.refresh_threshold) as u64;
+    row.scheduled_for = row.refresh_at;
+    row.state = TokenState::Ok;
+    row.warn_at = now + (expires_in_ms as f32 * row.warning_threshold) as u64;
     info!(
         "Refreshed token '{}' after {:.3} minutes. New token will expire in {:.3} minutes. \
          Refresh in {:.3} minutes.",
-        state.token_id,
+        row.token_id,
         diff_millis(old_last_touched, now) as f64 / (60.0 * 1000.0),
         rsp.expires_in.as_secs() as f64 / 60.0,
-        diff_millis(now, state.refresh_at) as f64 / (60.0 * 1000.0),
+        diff_millis(now, row.refresh_at) as f64 / (60.0 * 1000.0),
     );
 }
 
 fn update_token_err<T: Display>(
     err: AccessTokenProviderError,
-    state: &mut TokenState<T>,
+    row: &mut TokenRow<T>,
     token: &Mutex<StdResult<AccessToken, ErrorKind>>,
     clock: &Clock,
 ) {
@@ -187,13 +191,16 @@ fn update_token_err<T: Display>(
         *token.lock().unwrap() = Err(err.into())
     };
     let now = clock.now();
-    state.last_touched = now;
-    state.expires_at = now;
-    state.refresh_at = now;
-    state.warn_at = now;
-    state.scheduled_for = now + 500;
-    state.is_initialized = true;
-    state.is_error = true;
+    row.last_touched = now;
+    row.expires_at = now;
+    row.refresh_at = now;
+    row.warn_at = now;
+    row.scheduled_for = match row.state {
+        TokenState::Uninitialized | TokenState::Initializing => now + 100,
+        TokenState::Ok | TokenState::OkPending => now + 1_000,
+        TokenState::Error | TokenState::ErrorPending => now + 5_000,
+    };
+    row.state = TokenState::Error;
 }
 
 
@@ -257,7 +264,9 @@ mod test {
 
     impl TestClock {
         pub fn new() -> Self {
-            TestClock { time: Rc::new(Cell::new(0)) }
+            TestClock {
+                time: Rc::new(Cell::new(0)),
+            }
         }
 
         pub fn inc(&self, by_ms: u64) {
@@ -282,7 +291,9 @@ mod test {
 
     impl DummyAccessTokenProvider {
         pub fn new() -> Self {
-            DummyAccessTokenProvider { counter: Arc::new(Mutex::new(0)) }
+            DummyAccessTokenProvider {
+                counter: Arc::new(Mutex::new(0)),
+            }
         }
     }
 
@@ -299,10 +310,10 @@ mod test {
         }
     }
 
-    fn create_data()
-        -> (Vec<Mutex<TokenState<&'static str>>>,
-            BTreeMap<&'static str, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>)
-    {
+    fn create_data() -> (
+        Vec<Mutex<TokenRow<&'static str>>>,
+        BTreeMap<&'static str, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
+    ) {
         let mut groups = Vec::default();
         groups.push(
             ManagedTokenGroupBuilder::single_token(
