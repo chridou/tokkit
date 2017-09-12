@@ -64,8 +64,10 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
                 is_refresh_pending = true;
                 row.token_state = match row.token_state {
                     TokenState::Uninitialized => {
-                        if let Err(err) = self.sender
-                            .send(ManagerCommand::ScheduledRefresh(idx, self.clock.now()))
+                        if let Err(err) = self.sender.send(ManagerCommand::ScheduledRefresh(
+                            idx,
+                            self.clock.now(),
+                        ))
                         {
                             error!("Could not send initial refresh command: {}", err);
                             break;
@@ -74,8 +76,10 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
                     }
                     TokenState::Initializing => TokenState::Initializing,
                     TokenState::Ok => {
-                        if let Err(err) = self.sender
-                            .send(ManagerCommand::ScheduledRefresh(idx, self.clock.now()))
+                        if let Err(err) = self.sender.send(ManagerCommand::ScheduledRefresh(
+                            idx,
+                            self.clock.now(),
+                        ))
                         {
                             error!("Could not send regular refresh command: {}", err);
                             break;
@@ -84,8 +88,10 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
                     }
                     TokenState::OkPending => TokenState::OkPending,
                     TokenState::Error => {
-                        if let Err(err) = self.sender
-                            .send(ManagerCommand::RefreshOnError(idx, self.clock.now()))
+                        if let Err(err) = self.sender.send(ManagerCommand::RefreshOnError(
+                            idx,
+                            self.clock.now(),
+                        ))
                         {
                             error!("Could not send refresh on error command: {}", err);
                             break;
@@ -120,24 +126,27 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
                     warn!("Token '{}' is in error row.", row.token_id);
                     true
                 }
-                TokenState::Ok | TokenState::OkPending => if row.expires_at <= now {
-                    warn!(
-                        "Token '{}' expired {:.2} minutes ago.",
-                        row.token_id,
-                        (now - row.expires_at) as f64 / 60_000.0
-                    );
-                    true
-                } else if row.warn_at <= now {
-                    warn!(
-                        "Token '{}' expires in {:.2} minutes.",
-                        row.token_id,
-                        (row.expires_at - now) as f64 / 60_000.0
-                    );
-                    true
-                } else {
-                    false
-                },
-                TokenState::Uninitialized | TokenState::Initializing => false,
+                TokenState::Ok | TokenState::OkPending => {
+                    if row.expires_at <= now {
+                        warn!(
+                            "Token '{}' expired {:.2} minutes ago.",
+                            row.token_id,
+                            (now - row.expires_at) as f64 / 60_000.0
+                        );
+                        true
+                    } else if row.warn_at <= now {
+                        warn!(
+                            "Token '{}' expires in {:.2} minutes.",
+                            row.token_id,
+                            (row.expires_at - now) as f64 / 60_000.0
+                        );
+                        true
+                    } else {
+                        false
+                    }
+                }
+                TokenState::Uninitialized |
+                TokenState::Initializing => false,
             };
             if notified {
                 row.last_notification_at = Some(now);
@@ -161,9 +170,7 @@ mod test {
 
     impl TestClock {
         pub fn new() -> Self {
-            TestClock {
-                time: Rc::new(Cell::new(0)),
-            }
+            TestClock { time: Rc::new(Cell::new(0)) }
         }
 
         pub fn inc(&self, by_ms: u64) {
@@ -533,55 +540,46 @@ mod test {
             assert_eq!(Some(20000), row.last_notification_at);
         }
 
-        /*
-
-        clock.set(11500);
-        scheduler.do_a_scheduling_round();
-        let msg = rx.try_recv();
-        assert_eq!(true, msg.is_err());
-        {
-            let row = rows[0].lock().unwrap();
-            // error has been notified
-            assert_eq!(Some(11500), row.last_notification_at);
-            assert_eq!(true, row.is_initialized);
-            assert_eq!(true, row.is_error);
-        }
-
-        // receive new token
-        clock.set(12000);
+        // at 21000 the error is resolved and nothing should happen
+        clock.set(21000);
         {
             let mut row = rows[0].lock().unwrap();
-            row.refresh_at = clock.now() + 7500; // 19500
+            row.refresh_at = clock.now() + 7500;
             row.warn_at = clock.now() + 8500;
             row.expires_at = clock.now() + 10000;
-            row.is_error = false;
+            row.scheduled_for = clock.now() + 7500;
+            row.token_state = TokenState::Ok;
         }
-
         scheduler.do_a_scheduling_round();
+
         let msg = rx.try_recv();
         assert_eq!(true, msg.is_err());
         {
             let row = rows[0].lock().unwrap();
-            assert_eq!(Some(11500), row.last_notification_at);
+            assert_eq!(28500, row.refresh_at);
+            assert_eq!(29500, row.warn_at);
+            assert_eq!(31000, row.expires_at);
+            assert_eq!(28500, row.scheduled_for);
+            assert_eq!(TokenState::Ok, row.token_state);
+            assert_eq!(Some(20000), row.last_notification_at);
         }
 
-        clock.set(19500); // refresh now
+        // at 28500 a refresh should be sent..
+        clock.set(28500);
         scheduler.do_a_scheduling_round();
-        let msg = rx.recv().unwrap();
-        assert_eq!(ManagerCommand::ScheduledRefresh(0, 19500), msg);
+
+        let msg = rx.try_recv().unwrap();
+        assert_eq!(ManagerCommand::ScheduledRefresh(0, 28500), msg);
         {
             let row = rows[0].lock().unwrap();
-            assert_eq!(Some(11500), row.last_notification_at);
+            assert_eq!(28500, row.refresh_at);
+            assert_eq!(29500, row.warn_at);
+            assert_eq!(31000, row.expires_at);
+            assert_eq!(28500, row.scheduled_for);
+            assert_eq!(TokenState::OkPending, row.token_state);
+            assert_eq!(Some(20000), row.last_notification_at);
         }
 
-        clock.set(20500); // warn again
-        scheduler.do_a_scheduling_round();
-        let msg = rx.recv().unwrap();
-        assert_eq!(ManagerCommand::ScheduledRefresh(0, 20500), msg);
-        {
-            let row = rows[0].lock().unwrap();
-            assert_eq!(Some(20500), row.last_notification_at);
-        }
-        */
+        // and so on .....
     }
 }

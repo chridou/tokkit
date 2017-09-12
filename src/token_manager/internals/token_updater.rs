@@ -111,8 +111,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
         token: &Mutex<StdResult<AccessToken, ErrorKind>>,
     ) {
         match row.token_state {
-            TokenState::Uninitialized |
-            TokenState::Initializing => {
+            TokenState::Uninitialized | TokenState::Initializing => {
                 error!(
                     "Received an error for token '{}' which is not even initialized! \
                      Error: {}",
@@ -121,25 +120,23 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                 );
                 update_token_err(err, row, token, self.clock);
             }
-            TokenState::Ok | TokenState::OkPending => {
-                if row.expires_at <= self.clock.now() {
-                    error!(
-                        "Received an error for token '{}' and the token has already expired! \
+            TokenState::Ok | TokenState::OkPending => if row.expires_at <= self.clock.now() {
+                error!(
+                    "Received an error for token '{}' and the token has already expired! \
                      Error: {}",
-                        row.token_id,
-                        err
-                    );
-                    update_token_err(err, row, token, self.clock);
-                } else {
-                    error!(
-                        "Received an error for token '{}'. Will not update the \
+                    row.token_id,
+                    err
+                );
+                update_token_err(err, row, token, self.clock);
+            } else {
+                error!(
+                    "Received an error for token '{}'. Will not update the \
                      token because it is still valid. \
                      Error: {}",
-                        row.token_id,
-                        err
-                    );
-                }
-            }
+                    row.token_id,
+                    err
+                );
+            },
             TokenState::Error | TokenState::ErrorPending => {
                 error!(
                     "Received an error for token '{}' and the token is already \
@@ -199,8 +196,7 @@ fn update_token_err<T: Display>(
     row.refresh_at = now;
     row.warn_at = now;
     row.scheduled_for = match row.token_state {
-        TokenState::Uninitialized |
-        TokenState::Initializing => now + 100,
+        TokenState::Uninitialized | TokenState::Initializing => now + 100,
         TokenState::Ok | TokenState::OkPending => now + 1_000,
         TokenState::Error | TokenState::ErrorPending => now + 5_000,
     };
@@ -253,7 +249,6 @@ fn call_token_service(
 
 #[cfg(test)]
 mod test {
-    /*
     use std::sync::{Arc, Mutex};
     use std::cell::Cell;
     use std::rc::Rc;
@@ -329,9 +324,10 @@ mod test {
                 .unwrap(),
         );
         let tokens = create_tokens(&groups);
-        let states = create_states(groups, 0);
-        (states, tokens)
+        let rows = create_rows(groups, 0);
+        (rows, tokens)
     }
+
 
     #[test]
     fn clock_test() {
@@ -343,18 +339,18 @@ mod test {
 
     #[test]
     fn initial_state_is_correct() {
-        let (states, _) = create_data();
-        let token_state = states[0].lock().unwrap();
-        assert_eq!("token", token_state.token_id);
-        assert_eq!(vec![Scope::new("scope")], token_state.scopes);
-        assert_eq!(0.75, token_state.refresh_threshold);
-        assert_eq!(0.85, token_state.warning_threshold);
-        assert_eq!(0, token_state.refresh_at);
-        assert_eq!(0, token_state.warn_at);
-        assert_eq!(0, token_state.expires_at);
-        assert_eq!(None, token_state.last_notification_at);
-        assert_eq!(false, token_state.is_initialized);
-        assert_eq!(true, token_state.is_error);
+        let (rows, _) = create_data();
+        let row = rows[0].lock().unwrap();
+        assert_eq!("token", row.token_id);
+        assert_eq!(vec![Scope::new("scope")], row.scopes);
+        assert_eq!(0.75, row.refresh_threshold);
+        assert_eq!(0.85, row.warning_threshold);
+        assert_eq!(0, row.refresh_at);
+        assert_eq!(0, row.warn_at);
+        assert_eq!(0, row.expires_at);
+        assert_eq!(0, row.scheduled_for);
+        assert_eq!(TokenState::Uninitialized, row.token_state);
+        assert_eq!(None, row.last_notification_at);
     }
 
     #[test]
@@ -362,23 +358,20 @@ mod test {
         let (_, rx) = mpsc::channel();
         let is_running = AtomicBool::new(true);
         let clock = TestClock::new();
-        let (states, tokens) = create_data();
+        let (rows, tokens) = create_data();
 
-        let updater = TokenUpdater::new(&states, &tokens, rx, &is_running, &clock);
+        let updater = TokenUpdater::new(&rows, &tokens, rx, &is_running, &clock);
 
         clock.set(0);
         updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
         {
-            let token_state = states[0].lock().unwrap();
-            assert_eq!("token", token_state.token_id);
-            assert_eq!(vec![Scope::new("scope")], token_state.scopes);
-            assert_eq!(0, token_state.last_touched);
-            assert_eq!(750, token_state.refresh_at);
-            assert_eq!(850, token_state.warn_at);
-            assert_eq!(1000, token_state.expires_at);
-            assert_eq!(None, token_state.last_notification_at);
-            assert_eq!(true, token_state.is_initialized);
-            assert_eq!(false, token_state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(0, row.last_touched);
+            assert_eq!(750, row.refresh_at);
+            assert_eq!(850, row.warn_at);
+            assert_eq!(1000, row.expires_at);
+            assert_eq!(TokenState::Ok, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
         assert_eq!(
             "0",
@@ -399,23 +392,20 @@ mod test {
         let (_, rx) = mpsc::channel();
         let is_running = AtomicBool::new(true);
         let clock = TestClock::new();
-        let (states, tokens) = create_data();
+        let (rows, tokens) = create_data();
 
-        let updater = TokenUpdater::new(&states, &tokens, rx, &is_running, &clock);
+        let updater = TokenUpdater::new(&rows, &tokens, rx, &is_running, &clock);
 
         clock.set(0);
         updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
         {
-            let token_state = states[0].lock().unwrap();
-            assert_eq!("token", token_state.token_id);
-            assert_eq!(vec![Scope::new("scope")], token_state.scopes);
-            assert_eq!(0, token_state.last_touched);
-            assert_eq!(750, token_state.refresh_at);
-            assert_eq!(850, token_state.warn_at);
-            assert_eq!(1000, token_state.expires_at);
-            assert_eq!(None, token_state.last_notification_at);
-            assert_eq!(true, token_state.is_initialized);
-            assert_eq!(false, token_state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(0, row.last_touched);
+            assert_eq!(750, row.refresh_at);
+            assert_eq!(850, row.warn_at);
+            assert_eq!(1000, row.expires_at);
+            assert_eq!(TokenState::Ok, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
         assert_eq!(
             "0",
@@ -432,12 +422,13 @@ mod test {
 
         updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
         {
-            let token_state = states[0].lock().unwrap();
-            assert_eq!(0, token_state.last_touched);
-            assert_eq!(750, token_state.refresh_at);
-            assert_eq!(850, token_state.warn_at);
-            assert_eq!(1000, token_state.expires_at);
-            assert_eq!(None, token_state.last_notification_at);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(0, row.last_touched);
+            assert_eq!(750, row.refresh_at);
+            assert_eq!(850, row.warn_at);
+            assert_eq!(1000, row.expires_at);
+            assert_eq!(TokenState::Ok, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
         assert_eq!(
             "1",
@@ -458,23 +449,20 @@ mod test {
         let (_, rx) = mpsc::channel();
         let is_running = AtomicBool::new(true);
         let clock = TestClock::new();
-        let (states, tokens) = create_data();
+        let (rows, tokens) = create_data();
 
-        let updater = TokenUpdater::new(&states, &tokens, rx, &is_running, &clock);
+        let updater = TokenUpdater::new(&rows, &tokens, rx, &is_running, &clock);
 
         clock.set(1);
         updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
         {
-            let token_state = states[0].lock().unwrap();
-            assert_eq!("token", token_state.token_id);
-            assert_eq!(vec![Scope::new("scope")], token_state.scopes);
-            assert_eq!(1, token_state.last_touched);
-            assert_eq!(751, token_state.refresh_at);
-            assert_eq!(851, token_state.warn_at);
-            assert_eq!(1001, token_state.expires_at);
-            assert_eq!(None, token_state.last_notification_at);
-            assert_eq!(true, token_state.is_initialized);
-            assert_eq!(false, token_state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(1, row.last_touched);
+            assert_eq!(751, row.refresh_at);
+            assert_eq!(851, row.warn_at);
+            assert_eq!(1001, row.expires_at);
+            assert_eq!(TokenState::Ok, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
         assert_eq!(
             "0",
@@ -490,28 +478,26 @@ mod test {
         );
     }
 
+
     #[test]
     fn updater_workflow() {
         let (_, rx) = mpsc::channel();
         let is_running = AtomicBool::new(true);
         let clock = TestClock::new();
-        let (states, tokens) = create_data();
+        let (rows, tokens) = create_data();
 
-        let updater = TokenUpdater::new(&states, &tokens, rx, &is_running, &clock);
+        let updater = TokenUpdater::new(&rows, &tokens, rx, &is_running, &clock);
 
         clock.set(0);
         updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
         {
-            let token_state = states[0].lock().unwrap();
-            assert_eq!("token", token_state.token_id);
-            assert_eq!(vec![Scope::new("scope")], token_state.scopes);
-            assert_eq!(0, token_state.last_touched);
-            assert_eq!(750, token_state.refresh_at);
-            assert_eq!(850, token_state.warn_at);
-            assert_eq!(1000, token_state.expires_at);
-            assert_eq!(None, token_state.last_notification_at);
-            assert_eq!(true, token_state.is_initialized);
-            assert_eq!(false, token_state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(0, row.last_touched);
+            assert_eq!(750, row.refresh_at);
+            assert_eq!(850, row.warn_at);
+            assert_eq!(1000, row.expires_at);
+            assert_eq!(TokenState::Ok, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
         assert_eq!(
             "0",
@@ -526,20 +512,18 @@ mod test {
                 .0
         );
 
+
         // Regular refresh
         clock.set(750);
         updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
         {
-            let token_state = states[0].lock().unwrap();
-            assert_eq!("token", token_state.token_id);
-            assert_eq!(vec![Scope::new("scope")], token_state.scopes);
-            assert_eq!(750, token_state.last_touched);
-            assert_eq!(1500, token_state.refresh_at);
-            assert_eq!(1600, token_state.warn_at);
-            assert_eq!(1750, token_state.expires_at);
-            assert_eq!(None, token_state.last_notification_at);
-            assert_eq!(true, token_state.is_initialized);
-            assert_eq!(false, token_state.is_error);
+            let row = rows[0].lock().unwrap();
+            assert_eq!(750, row.last_touched);
+            assert_eq!(1500, row.refresh_at);
+            assert_eq!(1600, row.warn_at);
+            assert_eq!(1750, row.expires_at);
+            assert_eq!(TokenState::Ok, row.token_state);
+            assert_eq!(None, row.last_notification_at);
         }
         assert_eq!(
             "1",
@@ -554,11 +538,13 @@ mod test {
                 .0
         );
 
+        /*
+
         // Second regular refresh with same timestamp as before should also trigger
         clock.set(750);
         updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
         {
-            let token_state = states[0].lock().unwrap();
+            let token_state = rows[0].lock().unwrap();
             assert_eq!(750, token_state.last_touched);
             assert_eq!(1500, token_state.refresh_at);
             assert_eq!(1600, token_state.warn_at);
@@ -583,7 +569,7 @@ mod test {
         clock.set(800);
         updater.on_command(ManagerCommand::ForceRefresh("token", clock.now()));
         {
-            let token_state = states[0].lock().unwrap();
+            let token_state = rows[0].lock().unwrap();
             assert_eq!(800, token_state.last_touched);
             assert_eq!(1550, token_state.refresh_at);
             assert_eq!(1650, token_state.warn_at);
@@ -606,13 +592,13 @@ mod test {
 
         // Refresh on error
         {
-            let mut token_state = states[0].lock().unwrap();
+            let mut token_state = rows[0].lock().unwrap();
             token_state.is_error = true;
         }
         clock.set(801);
         updater.on_command(ManagerCommand::RefreshOnError(0, clock.now()));
         {
-            let token_state = states[0].lock().unwrap();
+            let token_state = rows[0].lock().unwrap();
             assert_eq!("token", token_state.token_id);
             assert_eq!(801, token_state.last_touched);
             assert_eq!(1551, token_state.refresh_at);
@@ -636,13 +622,13 @@ mod test {
 
         // Regular refresh on error
         {
-            let mut token_state = states[0].lock().unwrap();
+            let mut token_state = rows[0].lock().unwrap();
             token_state.is_error = true;
         }
         clock.set(802);
         updater.on_command(ManagerCommand::ScheduledRefresh(0, clock.now()));
         {
-            let token_state = states[0].lock().unwrap();
+            let token_state = rows[0].lock().unwrap();
             assert_eq!("token", token_state.token_id);
             assert_eq!(802, token_state.last_touched);
             assert_eq!(1552, token_state.refresh_at);
@@ -667,7 +653,7 @@ mod test {
         // Simultaneous refresh on error does nothing
         updater.on_command(ManagerCommand::RefreshOnError(0, clock.now()));
         {
-            let token_state = states[0].lock().unwrap();
+            let token_state = rows[0].lock().unwrap();
             assert_eq!("token", token_state.token_id);
             assert_eq!(802, token_state.last_touched);
             assert_eq!(1552, token_state.refresh_at);
@@ -688,5 +674,6 @@ mod test {
                 .unwrap()
                 .0
         );
-    }*/
+    */
+    }
 }
