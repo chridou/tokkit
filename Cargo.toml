@@ -1,6 +1,6 @@
 [package]
 name = "tokkit"
-version = "0.3.1"
+version = "0.4.1"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 license = "Apache-2.0/MIT"
 description = "A simple(simplistic) OAUTH toolkit."
@@ -14,7 +14,7 @@ categories = ["web-programming"]
 log = "0.3.0"
 error-chain = "0.10"
 json = "0.11"
-reqwest = "0.6"
+reqwest = "0.7"
 backoff = "0.1.0"
 url = "1.5.0"
 

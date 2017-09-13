@@ -20,7 +20,7 @@ pub fn initialize<
     clock: C,
 ) -> (Arc<Inner<T>>, mpsc::Sender<ManagerCommand<T>>) {
     let tokens = create_tokens(&groups);
-    let states = create_states(groups, clock.now());
+    let rows = create_rows(groups, clock.now());
 
     let (tx, rx) = mpsc::channel::<ManagerCommand<T>>();
 
@@ -28,20 +28,19 @@ pub fn initialize<
 
     let inner = Arc::new(Inner { tokens, is_running });
 
-    start(states, inner.clone(), tx.clone(), rx, clock);
+    start(rows, inner.clone(), tx.clone(), rx, clock);
 
     (inner.clone(), tx)
 }
 
-fn create_states<T: Clone>(
+fn create_rows<T: Clone>(
     groups: Vec<ManagedTokenGroup<T>>,
     now: EpochMillis,
-) -> Vec<Mutex<TokenState<T>>> {
+) -> Vec<Mutex<TokenRow<T>>> {
     let mut states = Vec::new();
-    let mut idx = 0;
     for group in groups {
         for managed_token in group.managed_tokens {
-            states.push(Mutex::new(TokenState {
+            states.push(Mutex::new(TokenRow {
                 token_id: managed_token.token_id.clone(),
                 scopes: managed_token.scopes,
                 refresh_threshold: group.refresh_threshold,
@@ -50,13 +49,11 @@ fn create_states<T: Clone>(
                 refresh_at: now,
                 warn_at: now,
                 expires_at: now,
+                scheduled_for: now,
+                token_state: TokenState::Uninitialized,
                 last_notification_at: None,
                 token_provider: group.token_provider.clone(),
-                is_initialized: false,
-                index: idx,
-                is_error: true, // unitialized is also an error.
             }));
-            idx += 1;
         }
     }
     states
@@ -90,23 +87,22 @@ fn start<
     T: Eq + Ord + Send + Sync + Clone + Display + 'static,
     C: Clock + Clone + Send + 'static,
 >(
-    states: Vec<Mutex<TokenState<T>>>,
+    rows: Vec<Mutex<TokenRow<T>>>,
     inner: Arc<Inner<T>>,
     sender: mpsc::Sender<ManagerCommand<T>>,
     receiver: mpsc::Receiver<ManagerCommand<T>>,
     clock: C,
 ) {
-    let states1 = Arc::new(states);
-    let states2 = states1.clone();
+    let rows1 = Arc::new(rows);
+    let rows2 = rows1.clone();
     let inner1 = inner.clone();
-    let sender1 = sender.clone();
     let clock1 = clock.clone();
     thread::spawn(move || {
         let scheduler = request_scheduler::RefreshScheduler::new(
-            &*states1,
-            &sender1,
-            5_000,
-            60_000,
+            &*rows1,
+            &sender,
+            500,
+            10_000,
             &inner1.is_running,
             &clock1,
         );
@@ -114,10 +110,9 @@ fn start<
     });
     thread::spawn(move || {
         let token_updater = token_updater::TokenUpdater::new(
-            &*states2,
+            &*rows2,
             &inner.tokens,
             receiver,
-            sender,
             &inner.is_running,
             &clock,
         );
@@ -144,7 +139,34 @@ impl<T: Eq + Ord + Clone + Display> Inner<T> {
     }
 }
 
-pub struct TokenState<T> {
+#[derive(PartialEq, Eq, Debug)]
+pub enum TokenState {
+    Uninitialized,
+    Initializing,
+    Ok,
+    OkPending,
+    Error,
+    ErrorPending,
+}
+
+impl TokenState {
+    pub fn is_refresh_pending(&self) -> bool {
+        match *self {
+            TokenState::Initializing | TokenState::OkPending | TokenState::ErrorPending => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_uninitialized(&self) -> bool {
+        match *self {
+            TokenState::Uninitialized |
+            TokenState::Initializing => true,
+            _ => false,
+        }
+    }
+}
+
+pub struct TokenRow<T> {
     token_id: T,
     scopes: Vec<Scope>,
     refresh_threshold: f32,
@@ -153,11 +175,10 @@ pub struct TokenState<T> {
     refresh_at: EpochMillis,
     warn_at: EpochMillis,
     expires_at: EpochMillis,
+    scheduled_for: EpochMillis,
+    token_state: TokenState,
     last_notification_at: Option<EpochMillis>,
     token_provider: Arc<AccessTokenProvider + Send + Sync + 'static>,
-    is_initialized: bool,
-    is_error: bool,
-    index: usize,
 }
 
 impl<T> Drop for Inner<T> {

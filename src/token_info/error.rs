@@ -41,6 +41,10 @@ error_chain! {
             description("server error")
             display("Server error({}): '{}'", status, t)
         }
+        Other(t: String) {
+            description("other error")
+            display("Other eror error: '{}'", t)
+        }
     }
 }
 

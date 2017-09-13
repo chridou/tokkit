@@ -186,8 +186,9 @@ fn execute_access_token_request(
         .append_pair("scope", &scope_vec.join(" "))
         .finish();
 
-    let request = client.post(full_url).headers(headers).body(form_encoded);
-    let rsp = request.send()?;
+    let mut request_builder = client.post(full_url)?;
+    request_builder.headers(headers).body(form_encoded);
+    let rsp = request_builder.send()?;
     Ok(rsp)
 }
 
