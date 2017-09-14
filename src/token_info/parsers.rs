@@ -59,14 +59,14 @@ impl CustomTokenInfoParser {
     /// * `TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD`(optional): The field name for the
     /// active field
     pub fn from_env() -> InitializationResult<CustomTokenInfoParser> {
-        let user_id_field: Option<String> =
-            match env::var("TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD") {
-                Ok(v) => Ok(Some(v)),
-                Err(VarError::NotPresent) => Ok(None),
-                Err(err) => Err(InitializationError(
-                    format!("'TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD': {}", err),
-                )),
-            }?;
+        let user_id_field: Option<String> = match env::var("TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD")
+        {
+            Ok(v) => Ok(Some(v)),
+            Err(VarError::NotPresent) => Ok(None),
+            Err(err) => Err(InitializationError(
+                format!("'TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD': {}", err),
+            )),
+        }?;
         let scope_field: Option<String> = match env::var("TOKKIT_TOKEN_INFO_PARSER_SCOPE_FIELD") {
             Ok(v) => Ok(Some(v)),
             Err(VarError::NotPresent) => Ok(None),
@@ -83,14 +83,13 @@ impl CustomTokenInfoParser {
                     err
                 ))),
             }?;
-        let active_field: Option<String> =
-            match env::var("TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD") {
-                Ok(v) => Ok(Some(v)),
-                Err(VarError::NotPresent) => Ok(None),
-                Err(err) => Err(InitializationError(
-                    format!("'TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD': {}", err),
-                )),
-            }?;
+        let active_field: Option<String> = match env::var("TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD") {
+            Ok(v) => Ok(Some(v)),
+            Err(VarError::NotPresent) => Ok(None),
+            Err(err) => Err(InitializationError(
+                format!("'TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD': {}", err),
+            )),
+        }?;
         Ok(Self::new(
             active_field,
             user_id_field,
@@ -247,7 +246,6 @@ impl TokenInfoParser for AmazonTokenInfoParser {
     }
 }
 
-
 pub fn parse(
     json: &[u8],
     active_field: Option<&str>,
@@ -266,13 +264,11 @@ pub fn parse(
                     Some(&JsonValue::Short(s)) => {
                         s.parse().map_err(|err| ToString::to_string(&err))?
                     }
-                    invalid => {
-                        bail!(format!(
-                            "Expected a boolean as the 'active' field in '{}' but found a {:?}",
-                            active_field,
-                            invalid
-                        ))
-                    }
+                    invalid => bail!(format!(
+                        "Expected a boolean as the 'active' field in '{}' but found a {:?}",
+                        active_field,
+                        invalid
+                    )),
                 }
             } else {
                 true
@@ -281,13 +277,11 @@ pub fn parse(
                 match data.get(user_id_field) {
                     Some(&JsonValue::Short(ref user_id)) => Some(UserId::new(user_id.as_ref())),
                     Some(&JsonValue::String(ref user_id)) => Some(UserId::new(user_id.as_ref())),
-                    invalid => {
-                        bail!(format!(
-                            "Expected a string as the user id in field '{}' but found a {:?}",
-                            user_id_field,
-                            invalid
-                        ))
-                    }
+                    invalid => bail!(format!(
+                        "Expected a string as the user id in field '{}' but found a {:?}",
+                        user_id_field,
+                        invalid
+                    )),
                 }
             } else {
                 None
@@ -300,13 +294,11 @@ pub fn parse(
                             match elem {
                                 &JsonValue::String(ref v) => scopes.push(Scope(v.clone())),
                                 &JsonValue::Short(ref v) => scopes.push(Scope::new(v.as_ref())),
-                                invalid => {
-                                    bail!(format!(
-                                        "Expected a string as a scope in ['{}'] but found '{}'",
-                                        scope_field,
-                                        invalid
-                                    ))
-                                }
+                                invalid => bail!(format!(
+                                    "Expected a string as a scope in ['{}'] but found '{}'",
+                                    scope_field,
+                                    invalid
+                                )),
                             }
                         }
                         scopes
@@ -314,14 +306,12 @@ pub fn parse(
                     Some(&JsonValue::String(ref scope)) => split_scopes(scope.as_ref()),
                     Some(&JsonValue::Short(ref scope)) => split_scopes(scope.as_ref()),
                     None => Vec::new(),
-                    invalid => {
-                        bail!(format!(
-                            "Expected an array or string for the \
-                        scope(s) in field '{}' but found a {:?}",
-                            scope_field,
-                            invalid
-                        ))
-                    }
+                    invalid => bail!(format!(
+                        "Expected an array or string for the \
+                         scope(s) in field '{}' but found a {:?}",
+                        scope_field,
+                        invalid
+                    )),
                 }
             } else {
                 Vec::new()
@@ -336,25 +326,21 @@ pub fn parse(
                         } else {
                             bail!(format!(
                                 "Field '{}' for expires_in_seconds \
-                                must be greater than 0(is {}).",
+                                 must be greater than 0(is {}).",
                                 expires_field,
                                 expires
                             ))
                         }
                     }
-                    None => {
-                        bail!(format!(
-                            "Field '{}' for expires_in_seconds not found.",
-                            expires_field
-                        ))
-                    }
-                    invalid => {
-                        bail!(format!(
-                            "Expected a number for field '{}' but found a {:?}",
-                            expires_field,
-                            invalid
-                        ))
-                    }
+                    None => bail!(format!(
+                        "Field '{}' for expires_in_seconds not found.",
+                        expires_field
+                    )),
+                    invalid => bail!(format!(
+                        "Expected a number for field '{}' but found a {:?}",
+                        expires_field,
+                        invalid
+                    )),
                 }
             } else {
                 None
@@ -368,7 +354,7 @@ pub fn parse(
         }
         _ => Err(
             "Expected an object but found something else which i won't show\
-                since it might contain a token."
+             since it might contain a token."
                 .to_string(),
         ),
     }

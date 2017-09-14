@@ -1,11 +1,12 @@
 [package]
 name = "tokkit"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 license = "Apache-2.0/MIT"
 description = "A simple(simplistic) OAUTH toolkit."
 documentation = "https://docs.rs/tokkit"
 homepage = "https://github.com/chridou/tokkit"
+readme = "README.md"
 repository = "https://github.com/chridou/tokkit"
 keywords = ["OAUTH2", "token", "authorization", "resource", "s2s"]
 categories = ["web-programming"]
