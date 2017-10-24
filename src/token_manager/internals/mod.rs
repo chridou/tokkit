@@ -18,19 +18,19 @@ pub fn initialize<
 >(
     groups: Vec<ManagedTokenGroup<T>>,
     clock: C,
-) -> (Arc<Inner<T>>, mpsc::Sender<ManagerCommand<T>>) {
-    let tokens = create_tokens(&groups);
+) -> (Inner<T>, mpsc::Sender<ManagerCommand<T>>) {
+    let tokens = Arc::new(create_tokens(&groups));
     let rows = create_rows(groups, clock.now());
 
     let (tx, rx) = mpsc::channel::<ManagerCommand<T>>();
 
-    let is_running = AtomicBool::new(true);
+    let is_running = Arc::new(AtomicBool::new(true));
 
-    let inner = Arc::new(Inner { tokens, is_running });
+    let inner = Inner { tokens, is_running };
 
     start(rows, inner.clone(), tx.clone(), rx, clock);
 
-    (inner.clone(), tx)
+    (inner, tx)
 }
 
 fn create_rows<T: Clone>(
@@ -67,16 +67,15 @@ fn create_tokens<T: Eq + Ord + Clone + Display>(
     let mut idx = 0;
     for group in groups {
         for managed_token in &group.managed_tokens {
-            tokens.insert(managed_token.token_id.clone(), (
-                idx,
-                Mutex::new(Err(
-                    ErrorKind::NotInitialized(
-                        managed_token
-                            .token_id
-                            .to_string(),
-                    ),
-                )),
-            ));
+            tokens.insert(
+                managed_token.token_id.clone(),
+                (
+                    idx,
+                    Mutex::new(Err(ErrorKind::NotInitialized(
+                        managed_token.token_id.to_string(),
+                    ))),
+                ),
+            );
             idx += 1;
         }
     }
@@ -88,7 +87,7 @@ fn start<
     C: Clock + Clone + Send + 'static,
 >(
     rows: Vec<Mutex<TokenRow<T>>>,
-    inner: Arc<Inner<T>>,
+    inner: Inner<T>,
     sender: mpsc::Sender<ManagerCommand<T>>,
     receiver: mpsc::Receiver<ManagerCommand<T>>,
     clock: C,
@@ -120,20 +119,19 @@ fn start<
     });
 }
 
+#[derive(Clone)]
 pub struct Inner<T> {
-    pub tokens: BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>,
-    pub is_running: AtomicBool,
+    pub tokens: Arc<BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>>,
+    pub is_running: Arc<AtomicBool>,
 }
 
 impl<T: Eq + Ord + Clone + Display> Inner<T> {
     pub fn get_access_token(&self, token_id: &T) -> Result<AccessToken> {
         match self.tokens.get(&token_id) {
-            Some(&(_, ref guard)) => {
-                match &*guard.lock().unwrap() {
-                    &Ok(ref token) => Ok(token.clone()),
-                    &Err(ref err) => bail!(err.clone()),
-                }
-            }
+            Some(&(_, ref guard)) => match &*guard.lock().unwrap() {
+                &Ok(ref token) => Ok(token.clone()),
+                &Err(ref err) => bail!(err.clone()),
+            },
             None => bail!(ErrorKind::NoToken(token_id.to_string())),
         }
     }
@@ -159,8 +157,7 @@ impl TokenState {
 
     pub fn is_uninitialized(&self) -> bool {
         match *self {
-            TokenState::Uninitialized |
-            TokenState::Initializing => true,
+            TokenState::Uninitialized | TokenState::Initializing => true,
             _ => false,
         }
     }
@@ -179,12 +176,6 @@ pub struct TokenRow<T> {
     token_state: TokenState,
     last_notification_at: Option<EpochMillis>,
     token_provider: Arc<AccessTokenProvider + Send + Sync + 'static>,
-}
-
-impl<T> Drop for Inner<T> {
-    fn drop(&mut self) {
-        self.is_running.store(false, Ordering::Relaxed);
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -224,7 +215,11 @@ fn diff_millis(start_millis: u64, end_millis: u64) -> u64 {
 }
 
 fn minus_millis(from: u64, subtract: u64) -> u64 {
-    if subtract > from { 0 } else { from - subtract }
+    if subtract > from {
+        0
+    } else {
+        from - subtract
+    }
 }
 
 fn elapsed_millis_from(start_millis: u64, clock: &Clock) -> u64 {

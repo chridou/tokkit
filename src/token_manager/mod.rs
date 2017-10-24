@@ -4,7 +4,7 @@
 //! They can later be queried by the identifier configured with
 //! the `ManagedToken`. The identifier can be any type `T` where
 //! `T: Eq + Ord + Send + Sync + Clone + Display + 'static`
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -12,7 +12,7 @@ use std::result::Result as StdResult;
 use std::fmt::Display;
 use std::collections::BTreeMap;
 use std::env;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 use {AccessToken, Scope};
 
 
@@ -22,7 +22,6 @@ mod internals;
 
 pub use self::error::*;
 use self::token_provider::*;
-use self::internals::Inner;
 use super::{InitializationError, InitializationResult};
 
 /// A builder to configure a `ManagedToken`.
@@ -253,19 +252,37 @@ pub struct ManagedTokenGroup<T> {
     pub warning_threshold: f32,
 }
 
+/// Keeps track of running client for global shutdown
+struct IsRunningGuard {
+    is_running: Arc<AtomicBool>,
+}
+
+impl Drop for IsRunningGuard {
+    fn drop(&mut self) {
+        self.is_running.store(false, Ordering::Relaxed);
+    }
+}
+
 /// Can be queired for `AccessToken`s by their
 /// identifier configured with the respective
 /// `ManagedToken`.
 #[derive(Clone)]
 pub struct AccessTokenSource<T> {
-    inner: Arc<Inner<T>>,
+    tokens: Arc<BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>>,
     sender: Sender<internals::ManagerCommand<T>>,
+    is_running: Arc<IsRunningGuard>,
 }
 
 impl<T: Eq + Ord + Clone + Display> AccessTokenSource<T> {
     /// Get an `AccessToken` by identifier.
     pub fn get_access_token(&self, token_id: &T) -> Result<AccessToken> {
-        self.inner.get_access_token(token_id)
+        match self.tokens.get(&token_id) {
+            Some(&(_, ref guard)) => match &*guard.lock().unwrap() {
+                &Ok(ref token) => Ok(token.clone()),
+                &Err(ref err) => bail!(err.clone()),
+            },
+            None => bail!(ErrorKind::NoToken(token_id.to_string())),
+        }
     }
 
     /// Refresh the `AccessToken` for the given identifier.
@@ -282,7 +299,7 @@ impl<T: Eq + Ord + Clone + Display> AccessTokenSource<T> {
     ///
     /// Fails if no `ManagedToken` with the given id exists.
     pub fn single_source_for(&self, token_id: &T) -> Result<SingleAccessTokenSource<T>> {
-        match self.inner.tokens.get(token_id) {
+        match self.tokens.get(token_id) {
             Some(_) => Ok(SingleAccessTokenSource {
                 token_source: self.clone(),
                 token_id: token_id.clone(),
@@ -337,7 +354,13 @@ impl AccessTokenManager {
             }
         }
         let (inner, sender) = internals::initialize(groups, internals::SystemClock);
-        Ok(AccessTokenSource { inner, sender })
+        Ok(AccessTokenSource {
+            tokens: inner.tokens,
+            sender,
+            is_running: Arc::new(IsRunningGuard {
+                is_running: inner.is_running,
+            }),
+        })
     }
 
     /// Starts the `AccessTokenManager` in the background and waits until all
@@ -369,7 +392,7 @@ impl AccessTokenManager {
             if start.elapsed() >= timeout_in {
                 return Err(InitializationError(
                     "Not all tokens were initialized within the \
-                given time."
+                     given time."
                         .into(),
                 ));
             }
@@ -389,6 +412,12 @@ impl AccessTokenManager {
             ::std::thread::sleep(Duration::from_millis(10));
         }
 
-        Ok(AccessTokenSource { inner, sender })
+        Ok(AccessTokenSource {
+            tokens: inner.tokens,
+            sender,
+            is_running: Arc::new(IsRunningGuard {
+                is_running: inner.is_running,
+            }),
+        })
     }
 }
