@@ -225,9 +225,7 @@ impl RemoteTokenInfoService {
             None
         };
 
-        let client = Client::new().map_err(
-            |err| InitializationError(err.to_string()),
-        )?;
+        let client = Client::new();
         Ok(RemoteTokenInfoService {
             url_prefix: Arc::new(url_prefix),
             fallback_url_prefix: fallback_url_prefix.map(|fb| Arc::new(fb)),
@@ -305,9 +303,7 @@ fn get_with_fallback(
 }
 
 fn get_remote(url: Url, http_client: &Client, parser: &TokenInfoParser) -> Result<TokenInfo> {
-    let mut request_builder = http_client.get(url).map_err(
-        |err| ErrorKind::Other(err.to_string()),
-    )?;
+    let mut request_builder = http_client.get(url);
     match request_builder.send() {
         Ok(ref mut response) => process_response(response, parser),
         Err(err) => Err(ErrorKind::Connection(err.to_string()).into()),
