@@ -60,9 +60,7 @@ impl ResourceOwnerPasswordCredentialsGrantProvider {
         U: Into<String>,
         C: CredentialsProvider + Send + Sync + 'static,
     {
-        let client = Client::new().map_err(
-            |err| InitializationError(format!("{}", err)),
-        )?;
+        let client = Client::new();
         let mut full_endpoint_url = endpoint_url.into();
         if let Some(realm) = realm {
             full_endpoint_url.push_str("?realm=");
@@ -186,7 +184,7 @@ fn execute_access_token_request(
         .append_pair("scope", &scope_vec.join(" "))
         .finish();
 
-    let mut request_builder = client.post(full_url)?;
+    let mut request_builder = client.post(full_url);
     request_builder.headers(headers).body(form_encoded);
     let rsp = request_builder.send()?;
     Ok(rsp)
