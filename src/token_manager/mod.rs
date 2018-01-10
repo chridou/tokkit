@@ -263,6 +263,13 @@ impl Drop for IsRunningGuard {
     }
 }
 
+pub trait GivesAccessTokensByIde<T: Eq + Ord + Clone + Display> {
+    /// Get an `AccessToken` by identifier.
+    fn get_access_token(&self, token_id: &T) -> Result<AccessToken>;
+    /// Refresh the `AccessToken` for the given identifier.
+    fn refresh(&self, name: &T);
+}
+
 /// Can be queired for `AccessToken`s by their
 /// identifier configured with the respective
 /// `ManagedToken`.
@@ -274,8 +281,22 @@ pub struct AccessTokenSource<T> {
 }
 
 impl<T: Eq + Ord + Clone + Display> AccessTokenSource<T> {
-    /// Get an `AccessToken` by identifier.
-    pub fn get_access_token(&self, token_id: &T) -> Result<AccessToken> {
+    /// Get a `SingleAccessTokenSource` for the given identifier.
+    ///
+    /// Fails if no `ManagedToken` with the given id exists.
+    pub fn single_source_for(&self, token_id: &T) -> Result<FixedAccessTokenSource<T>> {
+        match self.tokens.get(token_id) {
+            Some(_) => Ok(FixedAccessTokenSource {
+                token_source: self.clone(),
+                token_id: token_id.clone(),
+            }),
+            None => Err(ErrorKind::NoToken(token_id.to_string()).into()),
+        }
+    }
+}
+
+impl <T: Eq + Ord + Clone + Display> GivesAccessTokensByIde<T> for AccessTokenSource<T> {
+   fn get_access_token(&self, token_id: &T) -> Result<AccessToken> {
         match self.tokens.get(&token_id) {
             Some(&(_, ref guard)) => match &*guard.lock().unwrap() {
                 &Ok(ref token) => Ok(token.clone()),
@@ -285,8 +306,7 @@ impl<T: Eq + Ord + Clone + Display> AccessTokenSource<T> {
         }
     }
 
-    /// Refresh the `AccessToken` for the given identifier.
-    pub fn refresh(&self, name: &T) {
+    fn refresh(&self, name: &T) {
         self.sender
             .send(internals::ManagerCommand::ForceRefresh(
                 name.clone(),
@@ -294,35 +314,30 @@ impl<T: Eq + Ord + Clone + Display> AccessTokenSource<T> {
             ))
             .unwrap()
     }
+}
 
-    /// Get a `SingleAccessTokenSource` for the given identifier.
-    ///
-    /// Fails if no `ManagedToken` with the given id exists.
-    pub fn single_source_for(&self, token_id: &T) -> Result<SingleAccessTokenSource<T>> {
-        match self.tokens.get(token_id) {
-            Some(_) => Ok(SingleAccessTokenSource {
-                token_source: self.clone(),
-                token_id: token_id.clone(),
-            }),
-            None => Err(ErrorKind::NoToken(token_id.to_string()).into()),
-        }
-    }
+
+pub trait GivesFixedAccessToken<T: Eq + Ord + Clone + Display> {
+    /// Get the `AccessToken`.
+    fn get_access_token(&self) -> Result<AccessToken>;
+
+    /// Refresh the `AccessToken`
+    fn refresh(&self);
 }
 
 /// Can be queried for a fixed `AccessToken`.
 #[derive(Clone)]
-pub struct SingleAccessTokenSource<T> {
+pub struct FixedAccessTokenSource<T> {
     token_source: AccessTokenSource<T>,
     token_id: T,
 }
 
-impl<T: Eq + Ord + Clone + Display> SingleAccessTokenSource<T> {
-    /// Get the `AccessToken`.
-    pub fn get_access_token(&self) -> Result<AccessToken> {
+impl<T: Eq + Ord + Clone + Display> GivesFixedAccessToken<T> for FixedAccessTokenSource<T> {
+    fn get_access_token(&self) -> Result<AccessToken> {
         self.token_source.get_access_token(&self.token_id)
     }
 
-    pub fn refresh(&self) {
+    fn refresh(&self) {
         self.token_source.refresh(&self.token_id)
     }
 }
