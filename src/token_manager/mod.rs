@@ -263,16 +263,16 @@ impl Drop for IsRunningGuard {
     }
 }
 
-pub trait GivesAccessTokensByIde<T: Eq + Ord + Clone + Display> {
+/// Can be queired for `AccessToken`s by their
+/// identifier configured with the respective
+/// `ManagedToken`.
+pub trait GivesAccessTokensById<T: Eq + Ord + Clone + Display> {
     /// Get an `AccessToken` by identifier.
     fn get_access_token(&self, token_id: &T) -> Result<AccessToken>;
     /// Refresh the `AccessToken` for the given identifier.
     fn refresh(&self, name: &T);
 }
 
-/// Can be queired for `AccessToken`s by their
-/// identifier configured with the respective
-/// `ManagedToken`.
 #[derive(Clone)]
 pub struct AccessTokenSource<T> {
     tokens: Arc<BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>>,
@@ -295,7 +295,7 @@ impl<T: Eq + Ord + Clone + Display> AccessTokenSource<T> {
     }
 }
 
-impl <T: Eq + Ord + Clone + Display> GivesAccessTokensByIde<T> for AccessTokenSource<T> {
+impl <T: Eq + Ord + Clone + Display> GivesAccessTokensById<T> for AccessTokenSource<T> {
    fn get_access_token(&self, token_id: &T) -> Result<AccessToken> {
         match self.tokens.get(&token_id) {
             Some(&(_, ref guard)) => match &*guard.lock().unwrap() {
@@ -317,6 +317,10 @@ impl <T: Eq + Ord + Clone + Display> GivesAccessTokensByIde<T> for AccessTokenSo
 }
 
 
+/// Can be queried for a fixed `AccessToken`.
+/// 
+/// This means the `token_id` for the `AccessToken` to be delivered
+/// has been previously selected.
 pub trait GivesFixedAccessToken<T: Eq + Ord + Clone + Display> {
     /// Get the `AccessToken`.
     fn get_access_token(&self) -> Result<AccessToken>;
@@ -325,7 +329,6 @@ pub trait GivesFixedAccessToken<T: Eq + Ord + Clone + Display> {
     fn refresh(&self);
 }
 
-/// Can be queried for a fixed `AccessToken`.
 #[derive(Clone)]
 pub struct FixedAccessTokenSource<T> {
     token_source: AccessTokenSource<T>,
