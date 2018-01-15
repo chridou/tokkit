@@ -303,8 +303,8 @@ impl<T: Eq + Ord + Clone + Display> AccessTokenSource<T> {
     /// Creates a new `AccessTokenSource` which is not attached to an `AccessTokenManager`.
     ///
     /// This means the `AccessTokenSource` is not updated in the background and
-    /// should only be used in a testing contet or where you now that the
-    /// `AccessToken`s do not need to be updated(CLI etc)
+    /// should only be used in a testing context or where you know that the
+    /// `AccessToken`s do not need to be updated(CLI etc) in the background.
     ///
     /// The `refresh` method will not do anything meaningful...
     pub fn new_detached(tokens: &[(T, AccessToken)]) -> AccessTokenSource<T> {
