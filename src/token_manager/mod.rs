@@ -15,7 +15,6 @@ use std::env;
 use std::time::{Duration, Instant};
 use {AccessToken, Scope};
 
-
 mod error;
 pub mod token_provider;
 mod internals;
@@ -119,7 +118,6 @@ impl ManagedTokenBuilder<String> {
     }
 }
 
-
 impl<T: Eq + Send + Clone + Display> Default for ManagedTokenBuilder<T> {
     fn default() -> Self {
         ManagedTokenBuilder {
@@ -221,7 +219,6 @@ impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + Send + Sync + 'sta
             ))
         }
 
-
         Ok(ManagedTokenGroup {
             token_provider: token_provider,
             managed_tokens: self.managed_tokens,
@@ -243,7 +240,8 @@ impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + 'static> Default
     }
 }
 
-/// A group of `ManagedToken`s that are requested from the same authorization server
+/// A group of `ManagedToken`s that are requested from the same authorization
+/// server
 pub struct ManagedTokenGroup<T> {
     /// The
     pub token_provider: Arc<AccessTokenProvider + Send + Sync + 'static>,
@@ -255,6 +253,14 @@ pub struct ManagedTokenGroup<T> {
 /// Keeps track of running client for global shutdown
 struct IsRunningGuard {
     is_running: Arc<AtomicBool>,
+}
+
+impl Default for IsRunningGuard {
+    fn default() -> IsRunningGuard {
+        IsRunningGuard {
+            is_running: Arc::new(AtomicBool::new(true)),
+        }
+    }
 }
 
 impl Drop for IsRunningGuard {
@@ -293,10 +299,34 @@ impl<T: Eq + Ord + Clone + Display> AccessTokenSource<T> {
             None => Err(ErrorKind::NoToken(token_id.to_string()).into()),
         }
     }
+
+    /// Creates a new `AccessTokenSource` which is not attached to an `AccessTokenManager`.
+    ///
+    /// This means the `AccessTokenSource` is not updated in the background and
+    /// should only be used in a testing contet or where you now that the
+    /// `AccessToken`s do not need to be updated(CLI etc)
+    ///
+    /// The `refresh` method will not do anything meaningful...
+    pub fn new_detached(tokens: &[(T, AccessToken)]) -> AccessTokenSource<T> {
+        let mut tokens_map = BTreeMap::new();
+
+        for (i, &(ref id, ref token)) in tokens.into_iter().enumerate() {
+            let item = (i, Mutex::new(Ok(token.clone())));
+            tokens_map.insert(id.clone(), item);
+        }
+
+        let (tx, _) = ::std::sync::mpsc::channel::<internals::ManagerCommand<T>>();
+
+        AccessTokenSource {
+            tokens: Arc::new(tokens_map),
+            is_running: Default::default(),
+            sender: tx,
+        }
+    }
 }
 
-impl <T: Eq + Ord + Clone + Display> GivesAccessTokensById<T> for AccessTokenSource<T> {
-   fn get_access_token(&self, token_id: &T) -> Result<AccessToken> {
+impl<T: Eq + Ord + Clone + Display> GivesAccessTokensById<T> for AccessTokenSource<T> {
+    fn get_access_token(&self, token_id: &T) -> Result<AccessToken> {
         match self.tokens.get(&token_id) {
             Some(&(_, ref guard)) => match &*guard.lock().unwrap() {
                 &Ok(ref token) => Ok(token.clone()),
@@ -307,18 +337,18 @@ impl <T: Eq + Ord + Clone + Display> GivesAccessTokensById<T> for AccessTokenSou
     }
 
     fn refresh(&self, name: &T) {
-        self.sender
-            .send(internals::ManagerCommand::ForceRefresh(
-                name.clone(),
-                internals::Clock::now(&internals::SystemClock),
-            ))
-            .unwrap()
+        match self.sender.send(internals::ManagerCommand::ForceRefresh(
+            name.clone(),
+            internals::Clock::now(&internals::SystemClock),
+        )) {
+            Ok(_) => (),
+            Err(err) => warn!("Could send send refresh command for {}: {}", name, err),
+        }
     }
 }
 
-
 /// Can be queried for a fixed `AccessToken`.
-/// 
+///
 /// This means the `token_id` for the `AccessToken` to be delivered
 /// has been previously selected.
 pub trait GivesFixedAccessToken<T: Eq + Ord + Clone + Display> {
@@ -362,9 +392,10 @@ impl AccessTokenManager {
                 for managed_token in &group.managed_tokens {
                     let token_id = &managed_token.token_id;
                     if seen.contains_key(token_id) {
-                        bail!(InitializationError(
-                            format!("Token id '{}' is used more than once.", token_id),
-                        ))
+                        bail!(InitializationError(format!(
+                            "Token id '{}' is used more than once.",
+                            token_id
+                        ),))
                     } else {
                         seen.insert(token_id, ());
                     }
@@ -393,9 +424,10 @@ impl AccessTokenManager {
                 for managed_token in &group.managed_tokens {
                     let token_id = &managed_token.token_id;
                     if seen.contains_key(token_id) {
-                        bail!(InitializationError(
-                            format!("Token id '{}' is used more than once.", token_id),
-                        ))
+                        bail!(InitializationError(format!(
+                            "Token id '{}' is used more than once.",
+                            token_id
+                        ),))
                     } else {
                         seen.insert(token_id, ());
                     }
