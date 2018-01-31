@@ -142,7 +142,8 @@ pub struct ManagedTokenGroupBuilder<T, S: AccessTokenProvider + 'static> {
 }
 
 impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + Send + Sync + 'static>
-    ManagedTokenGroupBuilder<T, S> {
+    ManagedTokenGroupBuilder<T, S>
+{
     /// Sets the `AccessTokenProvider` for this group of `ManagedToken`s.
     /// This is a mandatory value.
     pub fn with_token_provider(&mut self, token_provider: S) -> &mut Self {
@@ -229,7 +230,8 @@ impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + Send + Sync + 'sta
 }
 
 impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + 'static> Default
-    for ManagedTokenGroupBuilder<T, S> {
+    for ManagedTokenGroupBuilder<T, S>
+{
     fn default() -> Self {
         ManagedTokenGroupBuilder {
             token_provider: Default::default(),
@@ -363,6 +365,24 @@ pub trait GivesFixedAccessToken<T: Eq + Ord + Clone + Display> {
 pub struct FixedAccessTokenSource<T> {
     token_source: AccessTokenSource<T>,
     token_id: T,
+}
+
+impl<T: Eq + Ord + Clone + Display> FixedAccessTokenSource<T> {
+    /// Creates a new `FixedAccessTokenSource` which is not attached to an `AccessTokenManager`.
+    ///
+    /// This means the `FixedAccessTokenSource` is not updated in the background and
+    /// should only be used in a testing context or where you know that the
+    /// `AccessToken`s do not need to be updated in the background(CLI etc).
+    ///
+    /// The `refresh` method will not do anything meaningful...
+    pub fn new_detached(token_id: T, token: AccessToken) -> FixedAccessTokenSource<T> {
+        let token_source = AccessTokenSource::new_detached(&[(token_id.clone(), token)]);
+
+        FixedAccessTokenSource {
+            token_source,
+            token_id,
+        }
+    }
 }
 
 impl<T: Eq + Ord + Clone + Display> GivesFixedAccessToken<T> for FixedAccessTokenSource<T> {
