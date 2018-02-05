@@ -29,7 +29,7 @@ impl Clone for ErrorKind {
             ErrorKind::NotInitialized(ref t) => ErrorKind::NotInitialized(t.clone()),
             ErrorKind::AccessTokenProvider(ref err) => ErrorKind::AccessTokenProvider(err.clone()),
             ErrorKind::Msg(ref m) => ErrorKind::Msg(m.clone()),
-            ref other => ErrorKind::Msg(format!("Something unexpected happened: {}", other))
+            ref other => ErrorKind::Msg(format!("Something unexpected happened: {}", other)),
         }
     }
 }

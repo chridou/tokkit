@@ -62,7 +62,6 @@ pub struct ClientCredentials {
     pub client_secret: String,
 }
 
-
 pub struct RequestTokenCredentials {
     pub client_credentials: ClientCredentials,
     pub owner_credentials: ResourceOwnerCredentials,
@@ -203,19 +202,17 @@ impl SplitFileCredentialsProvider {
     where
         P: ResourceOwnerCredentialsParser + Send + Sync + 'static,
     {
-        let credentials_dir = credentials_dir_from_env().map_err(
-            |msg| InitializationError(msg),
-        )?;
+        let credentials_dir = credentials_dir_from_env().map_err(|msg| InitializationError(msg))?;
 
-        let owner_file_name: PathBuf =
-            match env::var("TOKKIT_CREDENTIALS_RESOURCE_OWNER_FILENAME") {
-                Ok(dir) => dir.into(),
-                Err(VarError::NotPresent) => {
-                    warn!("No owner file name. Assuming 'user.json'");
-                    "user.json".into()
-                }
-                Err(err) => bail!(err),
-            };
+        let owner_file_name: PathBuf = match env::var("TOKKIT_CREDENTIALS_RESOURCE_OWNER_FILENAME")
+        {
+            Ok(dir) => dir.into(),
+            Err(VarError::NotPresent) => {
+                warn!("No owner file name. Assuming 'user.json'");
+                "user.json".into()
+            }
+            Err(err) => bail!(err),
+        };
 
         let client_file_name: PathBuf = match env::var("TOKKIT_CREDENTIALS_CLIENT_FILENAME") {
             Ok(dir) => dir.into(),
@@ -273,18 +270,17 @@ fn credentials_dir_from_env() -> StdResult<PathBuf, String> {
             info!("'TOKKIT_CREDENTIALS_DIR' not found. Looking for 'CREDENTIALS_DIR'");
             match env::var("CREDENTIALS_DIR") {
                 Ok(dir) => Ok(dir.into()),
-                Err(VarError::NotPresent) => Err(
-                    "Path for credentials files not found. Please \
-                     set 'TOKKIT_CREDENTIALS_DIR' or 'CREDENTIALS_DIR'."
-                        .into(),
-                ),
+                Err(VarError::NotPresent) => {
+                    Err("Path for credentials files not found. Please \
+                         set 'TOKKIT_CREDENTIALS_DIR' or 'CREDENTIALS_DIR'."
+                        .into())
+                }
                 Err(err) => Err(err.to_string()),
             }
         }
         Err(err) => Err(err.to_string()),
     }
 }
-
 
 impl CredentialsProvider for SplitFileCredentialsProvider {
     fn client_credentials(&self) -> CredentialsResult<ClientCredentials> {

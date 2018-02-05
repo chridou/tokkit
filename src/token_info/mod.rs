@@ -102,9 +102,10 @@ impl TokenInfo {
         if self.has_scope(scope) {
             Ok(())
         } else {
-            Err(NotAuthorized(
-                format!("Required scope '{}' not present.", scope),
-            ))
+            Err(NotAuthorized(format!(
+                "Required scope '{}' not present.",
+                scope
+            )))
         }
     }
 }
