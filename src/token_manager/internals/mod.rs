@@ -11,7 +11,6 @@ use super::*;
 
 pub type EpochMillis = u64;
 
-
 pub fn initialize<
     T: Eq + Ord + Send + Sync + Clone + Display + 'static,
     C: Clock + Clone + Send + 'static,

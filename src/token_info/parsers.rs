@@ -63,16 +63,18 @@ impl CustomTokenInfoParser {
         {
             Ok(v) => Ok(Some(v)),
             Err(VarError::NotPresent) => Ok(None),
-            Err(err) => Err(InitializationError(
-                format!("'TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD': {}", err),
-            )),
+            Err(err) => Err(InitializationError(format!(
+                "'TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD': {}",
+                err
+            ))),
         }?;
         let scope_field: Option<String> = match env::var("TOKKIT_TOKEN_INFO_PARSER_SCOPE_FIELD") {
             Ok(v) => Ok(Some(v)),
             Err(VarError::NotPresent) => Ok(None),
-            Err(err) => Err(InitializationError(
-                format!("'TOKKIT_TOKEN_INFO_PARSER_SCOPE_FIELD': {}", err),
-            )),
+            Err(err) => Err(InitializationError(format!(
+                "'TOKKIT_TOKEN_INFO_PARSER_SCOPE_FIELD': {}",
+                err
+            ))),
         }?;
         let expires_in_field: Option<String> =
             match env::var("TOKKIT_TOKEN_INFO_PARSER_EXPIRES_IN_FIELD") {
@@ -86,9 +88,10 @@ impl CustomTokenInfoParser {
         let active_field: Option<String> = match env::var("TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD") {
             Ok(v) => Ok(Some(v)),
             Err(VarError::NotPresent) => Ok(None),
-            Err(err) => Err(InitializationError(
-                format!("'TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD': {}", err),
-            )),
+            Err(err) => Err(InitializationError(format!(
+                "'TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD': {}",
+                err
+            ))),
         }?;
         Ok(Self::new(
             active_field,
@@ -123,18 +126,18 @@ impl TokenInfoParser for CustomTokenInfoParser {
 /// use tokkit::token_info::parsers::PlanBTokenInfoParser;
 ///
 /// let sample = br#"
-///     {
-///         "access_token": "token",
-///         "cn": true,
-///         "expires_in": 28292,
-///         "grant_type": "password",
-///         "open_id": "token",
-///         "realm": "/services",
-///         "scope": ["cn"],
-///         "token_type": "Bearer",
-///         "uid": "test2"
-///     }
-///     "#;
+/// {
+///     "access_token": "token",
+///     "cn": true,
+///     "expires_in": 28292,
+///     "grant_type": "password",
+///     "open_id": "token",
+///     "realm": "/services",
+///     "scope": ["cn"],
+///     "token_type": "Bearer",
+///     "uid": "test2"
+/// }
+/// "#;
 ///
 /// let expected = TokenInfo {
 ///     active: true,
@@ -168,10 +171,10 @@ impl TokenInfoParser for PlanBTokenInfoParser {
 ///
 /// let sample = br#"
 /// {
-///     "aud":"8819981768.apps.googleusercontent.com",
-///     "user_id":"123456789",
-///     "scope":"https://www.googleapis.com/auth/drive.metadata.readonly",
-///     "expires_in":436
+/// "aud":"8819981768.apps.googleusercontent.com",
+/// "user_id":"123456789",
+/// "scope":"https://www.googleapis.com/auth/drive.metadata.readonly",
+/// "expires_in":436
 /// }
 /// "#;
 ///
@@ -218,12 +221,12 @@ impl TokenInfoParser for GoogleV3TokenInfoParser {
 ///
 /// let sample = br#"
 /// {
-///     "iss":"https://www.amazon.com",
-///     "user_id": "amznl.account.K2LI23KL2LK2",
-///     "aud": "amznl.oa2-client.ASFWDFBRN",
-///     "app_id": "amznl.application.436457DFHDH",
-///     "exp": 3597,
-///     "iat": 1311280970
+/// "iss":"https://www.amazon.com",
+/// "user_id": "amznl.account.K2LI23KL2LK2",
+/// "aud": "amznl.oa2-client.ASFWDFBRN",
+/// "app_id": "amznl.application.436457DFHDH",
+/// "exp": 3597,
+/// "iat": 1311280970
 /// }
 /// "#;
 ///
@@ -266,8 +269,7 @@ pub fn parse(
                     }
                     invalid => bail!(format!(
                         "Expected a boolean as the 'active' field in '{}' but found a {:?}",
-                        active_field,
-                        invalid
+                        active_field, invalid
                     )),
                 }
             } else {
@@ -279,8 +281,7 @@ pub fn parse(
                     Some(&JsonValue::String(ref user_id)) => Some(UserId::new(user_id.as_ref())),
                     invalid => bail!(format!(
                         "Expected a string as the user id in field '{}' but found a {:?}",
-                        user_id_field,
-                        invalid
+                        user_id_field, invalid
                     )),
                 }
             } else {
@@ -296,8 +297,7 @@ pub fn parse(
                                 &JsonValue::Short(ref v) => scopes.push(Scope::new(v.as_ref())),
                                 invalid => bail!(format!(
                                     "Expected a string as a scope in ['{}'] but found '{}'",
-                                    scope_field,
-                                    invalid
+                                    scope_field, invalid
                                 )),
                             }
                         }
@@ -309,8 +309,7 @@ pub fn parse(
                     invalid => bail!(format!(
                         "Expected an array or string for the \
                          scope(s) in field '{}' but found a {:?}",
-                        scope_field,
-                        invalid
+                        scope_field, invalid
                     )),
                 }
             } else {
@@ -327,8 +326,7 @@ pub fn parse(
                             bail!(format!(
                                 "Field '{}' for expires_in_seconds \
                                  must be greater than 0(is {}).",
-                                expires_field,
-                                expires
+                                expires_field, expires
                             ))
                         }
                     }
@@ -338,8 +336,7 @@ pub fn parse(
                     )),
                     invalid => bail!(format!(
                         "Expected a number for field '{}' but found a {:?}",
-                        expires_field,
-                        invalid
+                        expires_field, invalid
                     )),
                 }
             } else {

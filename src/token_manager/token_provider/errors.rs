@@ -55,8 +55,7 @@ pub struct AuthorizationRequestError {
 
 impl fmt::Display for AuthorizationRequestError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut error_msg =
-            format!(
+        let mut error_msg = format!(
             "An invalid request was sent to the authorization server. \
              The error is \"{:?}\".",
             self.error,
@@ -81,9 +80,10 @@ impl str::FromStr for AuthorizationServerErrorCode {
             "unauthorized_client" => Ok(AuthorizationServerErrorCode::UnauthorizedClient),
             "unsupported_grant_type" => Ok(AuthorizationServerErrorCode::UnsupportedGrantType),
             "invalid_scope" => Ok(AuthorizationServerErrorCode::InvalidScope),
-            x => Err(AccessTokenProviderError::Other(
-                format!("'{}' is not a valid error kind.", x),
-            )),
+            x => Err(AccessTokenProviderError::Other(format!(
+                "'{}' is not a valid error kind.",
+                x
+            ))),
         }
     }
 }

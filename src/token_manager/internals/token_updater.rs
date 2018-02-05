@@ -115,8 +115,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                 error!(
                     "Received an error for token '{}' which is not even initialized! \
                      Error: {}",
-                    row.token_id,
-                    err
+                    row.token_id, err
                 );
                 update_token_err(err, row, token, self.clock);
             }
@@ -124,8 +123,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                 error!(
                     "Received an error for token '{}' and the token has already expired! \
                      Error: {}",
-                    row.token_id,
-                    err
+                    row.token_id, err
                 );
                 update_token_err(err, row, token, self.clock);
             } else {
@@ -133,8 +131,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                     "Received an error for token '{}'. Will not update the \
                      token because it is still valid. \
                      Error: {}",
-                    row.token_id,
-                    err
+                    row.token_id, err
                 );
             },
             TokenState::Error | TokenState::ErrorPending => {
@@ -142,16 +139,13 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
                     "Received an error for token '{}' and the token is already \
                      in error token_state! \
                      Error: {}",
-                    row.token_id,
-                    err
+                    row.token_id, err
                 );
                 update_token_err(err, row, token, self.clock);
             }
         }
     }
 }
-
-
 
 fn update_token_ok<T: Display>(
     rsp: AuthorizationServerResponse,
@@ -202,7 +196,6 @@ fn update_token_err<T: Display>(
     };
     row.token_state = TokenState::Error;
 }
-
 
 fn call_token_service(
     provider: &AccessTokenProvider,
@@ -327,7 +320,6 @@ mod refresh_tests {
         let rows = create_rows(groups, 0);
         (rows, tokens)
     }
-
 
     #[test]
     fn clock_test() {
@@ -519,7 +511,6 @@ mod refresh_tests {
                 .0
         );
     }
-
 
     #[test]
     fn refreshes_ok_pending_token() {

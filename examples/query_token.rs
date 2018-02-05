@@ -11,7 +11,6 @@ use tokkit::token_manager::token_provider::credentials::*;
 use tokkit::token_manager::token_provider::credentials::parsers::*;
 use tokkit::token_info::*;
 
-
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct MyTokenIdentifier;
 

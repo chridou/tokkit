@@ -64,10 +64,8 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
                 is_refresh_pending = true;
                 row.token_state = match row.token_state {
                     TokenState::Uninitialized => {
-                        if let Err(err) = self.sender.send(ManagerCommand::ScheduledRefresh(
-                            idx,
-                            self.clock.now(),
-                        ))
+                        if let Err(err) = self.sender
+                            .send(ManagerCommand::ScheduledRefresh(idx, self.clock.now()))
                         {
                             error!("Could not send initial refresh command: {}", err);
                             break;
@@ -76,10 +74,8 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
                     }
                     TokenState::Initializing => TokenState::Initializing,
                     TokenState::Ok => {
-                        if let Err(err) = self.sender.send(ManagerCommand::ScheduledRefresh(
-                            idx,
-                            self.clock.now(),
-                        ))
+                        if let Err(err) = self.sender
+                            .send(ManagerCommand::ScheduledRefresh(idx, self.clock.now()))
                         {
                             error!("Could not send regular refresh command: {}", err);
                             break;
@@ -88,10 +84,8 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
                     }
                     TokenState::OkPending => TokenState::OkPending,
                     TokenState::Error => {
-                        if let Err(err) = self.sender.send(ManagerCommand::RefreshOnError(
-                            idx,
-                            self.clock.now(),
-                        ))
+                        if let Err(err) = self.sender
+                            .send(ManagerCommand::RefreshOnError(idx, self.clock.now()))
                         {
                             error!("Could not send refresh on error command: {}", err);
                             break;
@@ -145,8 +139,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
                         false
                     }
                 }
-                TokenState::Uninitialized |
-                TokenState::Initializing => false,
+                TokenState::Uninitialized | TokenState::Initializing => false,
             };
             if notified {
                 row.last_notification_at = Some(now);
@@ -170,7 +163,9 @@ mod test {
 
     impl TestClock {
         pub fn new() -> Self {
-            TestClock { time: Rc::new(Cell::new(0)) }
+            TestClock {
+                time: Rc::new(Cell::new(0)),
+            }
         }
 
         pub fn inc(&self, by_ms: u64) {
@@ -284,7 +279,6 @@ mod test {
         }
     }
 
-
     #[test]
     fn scheduler_workflow() {
         let (tx, rx) = mpsc::channel();
@@ -358,7 +352,6 @@ mod test {
             assert_eq!(TokenState::Ok, row.token_state);
             assert_eq!(None, row.last_notification_at);
         }
-
 
         // at 8499 still nothing should happen
         clock.set(8499);
@@ -456,7 +449,6 @@ mod test {
             assert_eq!(Some(10500), row.last_notification_at);
         }
 
-
         // At 10600 the token comes in
         clock.set(10600);
         {
@@ -481,7 +473,6 @@ mod test {
             assert_eq!(TokenState::Ok, row.token_state);
             assert_eq!(Some(10500), row.last_notification_at);
         }
-
 
         // at 18100 the next token is requested
         clock.set(18100);

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::io::Read;
 use std::env;
 use std::str;
-use reqwest::{Url, Client, StatusCode, UrlError, Response};
+use reqwest::{Client, Response, StatusCode, Url, UrlError};
 use token_info::*;
 use token_info::error::Error;
 
@@ -81,11 +81,9 @@ impl<P: TokenInfoParser> RemoteTokenInfoServiceBuilder<P> {
     /// If `TOKKIT_TOKEN_INTROSPECTION_QUERY_PARAMETER` is ommitted the access token
     /// will be part of the URL.
     pub fn from_env() -> InitializationResult<Self> {
-        let endpoint = env::var("TOKKIT_TOKEN_INTROSPECTION_ENDPOINT").map_err(
-            |err| {
-                InitializationError(format!("'TOKKIT_TOKEN_INTROSPECTION_ENDPOINT': {}", err))
-            },
-        )?;
+        let endpoint = env::var("TOKKIT_TOKEN_INTROSPECTION_ENDPOINT").map_err(|err| {
+            InitializationError(format!("'TOKKIT_TOKEN_INTROSPECTION_ENDPOINT': {}", err))
+        })?;
         let query_parameter = match env::var("TOKKIT_TOKEN_INTROSPECTION_QUERY_PARAMETER") {
             Ok(v) => Some(v),
             Err(env::VarError::NotPresent) => None,
@@ -136,9 +134,8 @@ impl RemoteTokenInfoServiceBuilder<parsers::PlanBTokenInfoParser> {
     /// `TOKKIT_TOKEN_INTROSPECTION_QUERY_PARAMETER` will have no effect.
     ///
     /// [More information](http://planb.readthedocs.io/en/latest/intro.html#token-info)
-    pub fn plan_b_from_env()
-        -> InitializationResult<RemoteTokenInfoServiceBuilder<parsers::PlanBTokenInfoParser>>
-    {
+    pub fn plan_b_from_env(
+) -> InitializationResult<RemoteTokenInfoServiceBuilder<parsers::PlanBTokenInfoParser>> {
         let mut builder = Self::from_env()?;
         builder.with_parser(parsers::PlanBTokenInfoParser);
         builder.with_query_parameter("access_token");
@@ -173,7 +170,6 @@ impl RemoteTokenInfoServiceBuilder<parsers::AmazonTokenInfoParser> {
         builder
     }
 }
-
 
 impl<P: TokenInfoParser> Default for RemoteTokenInfoServiceBuilder<P> {
     fn default() -> Self {
@@ -210,17 +206,14 @@ impl RemoteTokenInfoService {
     where
         P: TokenInfoParser,
     {
-        let url_prefix = assemble_url_prefix(endpoint, &query_parameter).map_err(
-            |err| {
-                InitializationError(err)
-            },
-        )?;
+        let url_prefix = assemble_url_prefix(endpoint, &query_parameter)
+            .map_err(|err| InitializationError(err))?;
 
         let fallback_url_prefix = if let Some(fallback_endpoint_address) = fallback_endpoint {
-            Some(assemble_url_prefix(
-                fallback_endpoint_address,
-                &query_parameter,
-            ).map_err(|err| InitializationError(err))?)
+            Some(
+                assemble_url_prefix(fallback_endpoint_address, &query_parameter)
+                    .map_err(|err| InitializationError(err))?,
+            )
         } else {
             None
         };
@@ -251,9 +244,9 @@ fn assemble_url_prefix(
         }
     }
     let test_url = format!("{}test_token", url_prefix);
-    let _ = test_url.parse::<Url>().map_err(
-        |err| format!("Invalid URL: {}", err),
-    )?;
+    let _ = test_url
+        .parse::<Url>()
+        .map_err(|err| format!("Invalid URL: {}", err))?;
     Ok(url_prefix)
 }
 
@@ -294,11 +287,9 @@ fn get_with_fallback(
 ) -> Result<TokenInfo> {
     get_remote(url, client, parser).or_else(|err| match err {
         Error(ErrorKind::ClientError(_, _), _) => Err(err),
-        _ => {
-            fallback_url
-                .map(|url| get_remote(url, client, parser))
-                .unwrap_or(Err(err))
-        }
+        _ => fallback_url
+            .map(|url| get_remote(url, client, parser))
+            .unwrap_or(Err(err)),
     })
 }
 
@@ -321,9 +312,10 @@ fn process_response(response: &mut Response, parser: &TokenInfoParser) -> Result
         Ok(result)
     } else if response.status() == StatusCode::Unauthorized {
         let msg = str::from_utf8(&body)?;
-        bail!(ErrorKind::NotAuthenticated(
-            format!("The server refused the token: {}", msg),
-        ))
+        bail!(ErrorKind::NotAuthenticated(format!(
+            "The server refused the token: {}",
+            msg
+        ),))
     } else if response.status().is_client_error() {
         let msg = str::from_utf8(&body)?;
         bail!(ErrorKind::ClientError(
