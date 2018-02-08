@@ -434,16 +434,18 @@ impl<T: Eq + Ord + Clone + Display> GivesAccessTokensById<T> for AccessTokenSour
     }
 
     fn refresh(&self, name: &T) {
-        match self.sender.lock().unwrap().send(internals::ManagerCommand::ForceRefresh(
-            name.clone(),
-            internals::Clock::now(&internals::SystemClock),
-        )) {
+        match self.sender
+            .lock()
+            .unwrap()
+            .send(internals::ManagerCommand::ForceRefresh(
+                name.clone(),
+                internals::Clock::now(&internals::SystemClock),
+            )) {
             Ok(_) => (),
             Err(err) => warn!("Could send send refresh command for {}: {}", name, err),
         }
     }
 }
-
 
 /// Can be queried for a fixed `AccessToken`.
 ///
@@ -492,6 +494,7 @@ impl<T: Eq + Ord + Clone + Display> GivesFixedAccessToken<T> for FixedAccessToke
 }
 
 /// A source for fixed access tokens which implements the `Sync` trait
+#[derive(Clone)]
 pub struct FixedAccessTokenSourceSync<T> {
     token_source: AccessTokenSourceSync<T>,
     token_id: T,
@@ -524,7 +527,6 @@ impl<T: Eq + Ord + Clone + Display> GivesFixedAccessToken<T> for FixedAccessToke
         self.token_source.refresh(&self.token_id)
     }
 }
-
 
 /// The `TokenManager` refreshes `AccessTokens`s in the background.
 ///
