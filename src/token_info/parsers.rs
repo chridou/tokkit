@@ -127,15 +127,15 @@ impl TokenInfoParser for CustomTokenInfoParser {
 ///
 /// let sample = br#"
 /// {
-///     "access_token": "token",
-///     "cn": true,
-///     "expires_in": 28292,
-///     "grant_type": "password",
-///     "open_id": "token",
-///     "realm": "/services",
-///     "scope": ["cn"],
-///     "token_type": "Bearer",
-///     "uid": "test2"
+/// "access_token": "token",
+/// "cn": true,
+/// "expires_in": 28292,
+/// "grant_type": "password",
+/// "open_id": "token",
+/// "realm": "/services",
+/// "scope": ["cn"],
+/// "token_type": "Bearer",
+/// "uid": "test2"
 /// }
 /// "#;
 ///

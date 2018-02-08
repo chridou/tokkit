@@ -302,6 +302,29 @@ impl<T: Eq + Ord + Clone + Display> AccessTokenSource<T> {
         }
     }
 
+    /// Get a `SingleAccessTokenSource` wich implements 'Sync`
+    /// for the given identifier.
+    ///
+    /// Fails if no `ManagedToken` with the given id exists.
+    pub fn single_source_sync_for(&self, token_id: &T) -> Result<FixedAccessTokenSourceSync<T>> {
+        match self.tokens.get(token_id) {
+            Some(_) => Ok(FixedAccessTokenSourceSync {
+                token_source: self.synced(),
+                token_id: token_id.clone(),
+            }),
+            None => Err(ErrorKind::NoToken(token_id.to_string()).into()),
+        }
+    }
+
+    /// Get this with the `Sync` trait implemented
+    pub fn synced(&self) -> AccessTokenSourceSync<T> {
+        AccessTokenSourceSync {
+            tokens: self.tokens.clone(),
+            sender: Arc::new(Mutex::new(self.sender.clone())),
+            is_running: self.is_running.clone(),
+        }
+    }
+
     /// Creates a new `AccessTokenSource` which is not attached to an `AccessTokenManager`.
     ///
     /// This means the `AccessTokenSource` is not updated in the background and
@@ -349,6 +372,79 @@ impl<T: Eq + Ord + Clone + Display> GivesAccessTokensById<T> for AccessTokenSour
     }
 }
 
+/// An `AccessTokenSource` with the Sync trait.
+///
+/// Can be shared among threads. Use only, if really needed.
+#[derive(Clone)]
+pub struct AccessTokenSourceSync<T> {
+    tokens: Arc<BTreeMap<T, (usize, Mutex<StdResult<AccessToken, ErrorKind>>)>>,
+    sender: Arc<Mutex<Sender<internals::ManagerCommand<T>>>>,
+    is_running: Arc<IsRunningGuard>,
+}
+
+impl<T: Eq + Ord + Clone + Display> AccessTokenSourceSync<T> {
+    /// Get a `SingleAccessTokenSource` with `Sync `for the given identifier.
+    ///
+    /// Fails if no `ManagedToken` with the given id exists.
+    pub fn single_source_sync_for(&self, token_id: &T) -> Result<FixedAccessTokenSourceSync<T>> {
+        match self.tokens.get(token_id) {
+            Some(_) => Ok(FixedAccessTokenSourceSync {
+                token_source: self.clone(),
+                token_id: token_id.clone(),
+            }),
+            None => Err(ErrorKind::NoToken(token_id.to_string()).into()),
+        }
+    }
+
+    /// Creates a new `AccessTokenSource` with `Sync`
+    /// which is not attached to an `AccessTokenManager`.
+    ///
+    /// This means the `AccessTokenSource` is not updated in the background and
+    /// should only be used in a testing context or where you know that the
+    /// `AccessToken`s do not need to be updated in the background(CLI etc).
+    ///
+    /// The `refresh` method will not do anything meaningful...
+    pub fn new_detached(tokens: &[(T, AccessToken)]) -> AccessTokenSourceSync<T> {
+        let mut tokens_map = BTreeMap::new();
+
+        for (i, &(ref id, ref token)) in tokens.into_iter().enumerate() {
+            let item = (i, Mutex::new(Ok(token.clone())));
+            tokens_map.insert(id.clone(), item);
+        }
+
+        let (tx, _) = ::std::sync::mpsc::channel::<internals::ManagerCommand<T>>();
+
+        AccessTokenSourceSync {
+            tokens: Arc::new(tokens_map),
+            is_running: Default::default(),
+            sender: Arc::new(Mutex::new(tx)),
+        }
+    }
+}
+
+impl<T: Eq + Ord + Clone + Display> GivesAccessTokensById<T> for AccessTokenSourceSync<T> {
+    fn get_access_token(&self, token_id: &T) -> Result<AccessToken> {
+        match self.tokens.get(&token_id) {
+            Some(&(_, ref guard)) => match &*guard.lock().unwrap() {
+                &Ok(ref token) => Ok(token.clone()),
+                &Err(ref err) => bail!(err.clone()),
+            },
+            None => bail!(ErrorKind::NoToken(token_id.to_string())),
+        }
+    }
+
+    fn refresh(&self, name: &T) {
+        match self.sender.lock().unwrap().send(internals::ManagerCommand::ForceRefresh(
+            name.clone(),
+            internals::Clock::now(&internals::SystemClock),
+        )) {
+            Ok(_) => (),
+            Err(err) => warn!("Could send send refresh command for {}: {}", name, err),
+        }
+    }
+}
+
+
 /// Can be queried for a fixed `AccessToken`.
 ///
 /// This means the `token_id` for the `AccessToken` to be delivered
@@ -394,6 +490,41 @@ impl<T: Eq + Ord + Clone + Display> GivesFixedAccessToken<T> for FixedAccessToke
         self.token_source.refresh(&self.token_id)
     }
 }
+
+/// A source for fixed access tokens which implements the `Sync` trait
+pub struct FixedAccessTokenSourceSync<T> {
+    token_source: AccessTokenSourceSync<T>,
+    token_id: T,
+}
+
+impl<T: Eq + Ord + Clone + Display> FixedAccessTokenSourceSync<T> {
+    /// Creates a new `FixedAccessTokenSource` which is not attached to an `AccessTokenManager`.
+    ///
+    /// This means the `FixedAccessTokenSource` is not updated in the background and
+    /// should only be used in a testing context or where you know that the
+    /// `AccessToken`s do not need to be updated in the background(CLI etc).
+    ///
+    /// The `refresh` method will not do anything meaningful...
+    pub fn new_detached(token_id: T, token: AccessToken) -> FixedAccessTokenSourceSync<T> {
+        let token_source = AccessTokenSourceSync::new_detached(&[(token_id.clone(), token)]);
+
+        FixedAccessTokenSourceSync {
+            token_source,
+            token_id,
+        }
+    }
+}
+
+impl<T: Eq + Ord + Clone + Display> GivesFixedAccessToken<T> for FixedAccessTokenSourceSync<T> {
+    fn get_access_token(&self) -> Result<AccessToken> {
+        self.token_source.get_access_token(&self.token_id)
+    }
+
+    fn refresh(&self) {
+        self.token_source.refresh(&self.token_id)
+    }
+}
+
 
 /// The `TokenManager` refreshes `AccessTokens`s in the background.
 ///
