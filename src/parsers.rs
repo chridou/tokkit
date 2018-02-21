@@ -1,7 +1,22 @@
 //! Various parsers for the responses of a token info service.
-use super::*;
 use std::str;
 use std::env;
+
+use failure::*;
+
+use {Scope, TokenInfo, UserId};
+
+/// A parser that can parse a slice of bytes to a `TokenInfo`
+pub trait TokenInfoParser: 'static {
+    fn parse(&self, bytes: &[u8]) -> Result<TokenInfo, Error>;
+}
+
+impl TokenInfoParser for Fn(&[u8]) -> ::std::result::Result<TokenInfo, Error> {
+    /// Parse a slice of bytes to a `TokenInfo`
+    fn parse(&self, bytes: &[u8]) -> Result<TokenInfo, Error> {
+        self(bytes)
+    }
+}
 
 /// A configurable `TokenInfoParser` that parses a `TokenInfo` from JSON
 /// returned by a token introspection service.
@@ -58,41 +73,29 @@ impl CustomTokenInfoParser {
     /// * `TOKKIT_TOKEN_INFO_PARSER_EXPIRES_IN_FIELD`(optional): The field name for the
     /// * `TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD`(optional): The field name for the
     /// active field
-    pub fn from_env() -> InitializationResult<CustomTokenInfoParser> {
+    pub fn from_env() -> Result<CustomTokenInfoParser, Error> {
         let user_id_field: Option<String> = match env::var("TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD")
         {
-            Ok(v) => Ok(Some(v)),
-            Err(VarError::NotPresent) => Ok(None),
-            Err(err) => Err(InitializationError(format!(
-                "'TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD': {}",
-                err
-            ))),
-        }?;
+            Ok(v) => Some(v),
+            Err(env::VarError::NotPresent) => None,
+            Err(err) => bail!("'TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD': {}", err),
+        };
         let scope_field: Option<String> = match env::var("TOKKIT_TOKEN_INFO_PARSER_SCOPE_FIELD") {
-            Ok(v) => Ok(Some(v)),
-            Err(VarError::NotPresent) => Ok(None),
-            Err(err) => Err(InitializationError(format!(
-                "'TOKKIT_TOKEN_INFO_PARSER_SCOPE_FIELD': {}",
-                err
-            ))),
-        }?;
+            Ok(v) => Some(v),
+            Err(env::VarError::NotPresent) => None,
+            Err(err) => bail!("'TOKKIT_TOKEN_INFO_PARSER_SCOPE_FIELD': {}", err),
+        };
         let expires_in_field: Option<String> =
             match env::var("TOKKIT_TOKEN_INFO_PARSER_EXPIRES_IN_FIELD") {
-                Ok(v) => Ok(Some(v)),
-                Err(VarError::NotPresent) => Ok(None),
-                Err(err) => Err(InitializationError(format!(
-                    "'TOKKIT_TOKEN_INFO_PARSER_EXPIRES_IN_FIELD': {}",
-                    err
-                ))),
-            }?;
+                Ok(v) => Some(v),
+                Err(env::VarError::NotPresent) => None,
+                Err(err) => bail!("'TOKKIT_TOKEN_INFO_PARSER_EXPIRES_IN_FIELD': {}", err),
+            };
         let active_field: Option<String> = match env::var("TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD") {
-            Ok(v) => Ok(Some(v)),
-            Err(VarError::NotPresent) => Ok(None),
-            Err(err) => Err(InitializationError(format!(
-                "'TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD': {}",
-                err
-            ))),
-        }?;
+            Ok(v) => Some(v),
+            Err(env::VarError::NotPresent) => None,
+            Err(err) => bail!("'TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD': {}", err),
+        };
         Ok(Self::new(
             active_field,
             user_id_field,
@@ -103,7 +106,7 @@ impl CustomTokenInfoParser {
 }
 
 impl TokenInfoParser for CustomTokenInfoParser {
-    fn parse(&self, json: &[u8]) -> ::std::result::Result<TokenInfo, String> {
+    fn parse(&self, json: &[u8]) -> Result<TokenInfo, Error> {
         parse(
             json,
             self.active_field.as_ref().map(|s| &**s),
@@ -122,8 +125,7 @@ impl TokenInfoParser for CustomTokenInfoParser {
 ///
 /// ```rust
 /// use tokkit::*;
-/// use tokkit::token_info::*;
-/// use tokkit::token_info::parsers::PlanBTokenInfoParser;
+/// use tokkit::parsers::{PlanBTokenInfoParser, TokenInfoParser};
 ///
 /// let sample = br#"
 /// {
@@ -153,7 +155,7 @@ impl TokenInfoParser for CustomTokenInfoParser {
 pub struct PlanBTokenInfoParser;
 
 impl TokenInfoParser for PlanBTokenInfoParser {
-    fn parse(&self, json: &[u8]) -> ::std::result::Result<TokenInfo, String> {
+    fn parse(&self, json: &[u8]) -> ::std::result::Result<TokenInfo, Error> {
         parse(json, None, Some("uid"), Some("scope"), Some("expires_in"))
     }
 }
@@ -166,8 +168,7 @@ impl TokenInfoParser for PlanBTokenInfoParser {
 ///
 /// ```rust
 /// use tokkit::*;
-/// use tokkit::token_info::*;
-/// use tokkit::token_info::parsers::GoogleV3TokenInfoParser;
+/// use tokkit::parsers::{GoogleV3TokenInfoParser, TokenInfoParser};
 ///
 /// let sample = br#"
 /// {
@@ -196,7 +197,7 @@ impl TokenInfoParser for PlanBTokenInfoParser {
 pub struct GoogleV3TokenInfoParser;
 
 impl TokenInfoParser for GoogleV3TokenInfoParser {
-    fn parse(&self, json: &[u8]) -> ::std::result::Result<TokenInfo, String> {
+    fn parse(&self, json: &[u8]) -> ::std::result::Result<TokenInfo, Error> {
         parse(
             json,
             None,
@@ -216,8 +217,7 @@ impl TokenInfoParser for GoogleV3TokenInfoParser {
 ///
 /// ```rust
 /// use tokkit::*;
-/// use tokkit::token_info::*;
-/// use tokkit::token_info::parsers::AmazonTokenInfoParser;
+/// use tokkit::parsers::{AmazonTokenInfoParser, TokenInfoParser};
 ///
 /// let sample = br#"
 /// {
@@ -244,7 +244,7 @@ impl TokenInfoParser for GoogleV3TokenInfoParser {
 pub struct AmazonTokenInfoParser;
 
 impl TokenInfoParser for AmazonTokenInfoParser {
-    fn parse(&self, json: &[u8]) -> ::std::result::Result<TokenInfo, String> {
+    fn parse(&self, json: &[u8]) -> Result<TokenInfo, Error> {
         parse(json, None, Some("user_id"), Some("scope"), Some("exp"))
     }
 }
@@ -255,22 +255,21 @@ pub fn parse(
     user_id_field: Option<&str>,
     scope_field: Option<&str>,
     expires_field: Option<&str>,
-) -> ::std::result::Result<TokenInfo, String> {
+) -> ::std::result::Result<TokenInfo, Error> {
     use json::*;
-    let json = str::from_utf8(json).map_err(|err| err.to_string())?;
-    let json = ::json::parse(json).map_err(|err| err.to_string())?;
+    let json = str::from_utf8(json).context("String was not UTF-8")?;
+    let json = ::json::parse(json)?;
     match json {
         JsonValue::Object(data) => {
             let active = if let Some(active_field) = active_field {
                 match data.get(active_field) {
                     Some(&JsonValue::Boolean(active)) => active,
-                    Some(&JsonValue::Short(s)) => {
-                        s.parse().map_err(|err| ToString::to_string(&err))?
-                    }
-                    invalid => bail!(format!(
+                    Some(&JsonValue::Short(s)) => s.parse()?,
+                    invalid => bail!(
                         "Expected a boolean as the 'active' field in '{}' but found a {:?}",
-                        active_field, invalid
-                    )),
+                        active_field,
+                        invalid
+                    ),
                 }
             } else {
                 true
@@ -279,10 +278,11 @@ pub fn parse(
                 match data.get(user_id_field) {
                     Some(&JsonValue::Short(ref user_id)) => Some(UserId::new(user_id.as_ref())),
                     Some(&JsonValue::String(ref user_id)) => Some(UserId::new(user_id.as_ref())),
-                    invalid => bail!(format!(
+                    invalid => bail!(
                         "Expected a string as the user id in field '{}' but found a {:?}",
-                        user_id_field, invalid
-                    )),
+                        user_id_field,
+                        invalid
+                    ),
                 }
             } else {
                 None
@@ -295,10 +295,11 @@ pub fn parse(
                             match elem {
                                 &JsonValue::String(ref v) => scopes.push(Scope(v.clone())),
                                 &JsonValue::Short(ref v) => scopes.push(Scope::new(v.as_ref())),
-                                invalid => bail!(format!(
+                                invalid => bail!(
                                     "Expected a string as a scope in ['{}'] but found '{}'",
-                                    scope_field, invalid
-                                )),
+                                    scope_field,
+                                    invalid
+                                ),
                             }
                         }
                         scopes
@@ -306,11 +307,12 @@ pub fn parse(
                     Some(&JsonValue::String(ref scope)) => split_scopes(scope.as_ref()),
                     Some(&JsonValue::Short(ref scope)) => split_scopes(scope.as_ref()),
                     None => Vec::new(),
-                    invalid => bail!(format!(
+                    invalid => bail!(
                         "Expected an array or string for the \
                          scope(s) in field '{}' but found a {:?}",
-                        scope_field, invalid
-                    )),
+                        scope_field,
+                        invalid
+                    ),
                 }
             } else {
                 Vec::new()
@@ -323,21 +325,23 @@ pub fn parse(
                         if expires >= 0 {
                             Some(expires as u64)
                         } else {
-                            bail!(format!(
+                            bail!(
                                 "Field '{}' for expires_in_seconds \
                                  must be greater than 0(is {}).",
-                                expires_field, expires
-                            ))
+                                expires_field,
+                                expires
+                            )
                         }
                     }
-                    None => bail!(format!(
+                    None => bail!(
                         "Field '{}' for expires_in_seconds not found.",
                         expires_field
-                    )),
-                    invalid => bail!(format!(
+                    ),
+                    invalid => bail!(
                         "Expected a number for field '{}' but found a {:?}",
-                        expires_field, invalid
-                    )),
+                        expires_field,
+                        invalid
+                    ),
                 }
             } else {
                 None
@@ -349,10 +353,9 @@ pub fn parse(
                 expires_in_seconds: expires_in,
             })
         }
-        _ => Err(
+        _ => bail!(
             "Expected an object but found something else which i won't show\
              since it might contain a token."
-                .to_string(),
         ),
     }
 }

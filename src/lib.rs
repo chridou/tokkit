@@ -10,8 +10,8 @@
 //! [![license-apache](http://img.shields.io/badge/license-APACHE-blue.svg)](https://github.
 //! com/chridou/tokkit/blob/master/LICENSE-APACHE)
 //!
-//! `tokkit` is a simple(even simplistic) **tok**en tool**kit** for OAUTH2 authorization
-//! targetting service to service authorization.
+//! `tokkit` is a simple(even simplistic) **tok**en tool**kit** for OAUTH2 token
+//! introspection
 //!
 //! ## Adding tokkit to your project
 //!
@@ -29,9 +29,9 @@
 //!
 //! ```rust,no_run
 //! use tokkit::*;
-//! use tokkit::token_info::*;
+//! use tokkit::client::*;
 //!
-//! let builder = RemoteTokenInfoServiceBuilder::google_v3();
+//! let builder = TokenInfoServiceClientBuilder::google_v3();
 //!
 //! let service = builder.build().unwrap();
 //!
@@ -40,68 +40,34 @@
 //! let tokeninfo = service.introspect(&token).unwrap();
 //! ```
 //!
-//! ### Managing Tokens
-//!
-//! `tokkit` can manage and automatically update your access tokens if you
-//! are a client and want to access a resource owners resources.
-//!
-//! Currently `tokkit` only supports the
-//! [Resource Owner Password Credentials Grant](https://tools.ietf.org/html/rfc6749#section-4.3)
-//! which should only be used if the resource owner can really trust the client.
-//!
-//! ```rust,no_run
-//! use tokkit::*;
-//! use tokkit::token_manager::*;
-//! use tokkit::token_manager::token_provider::*;
-//! use tokkit::token_manager::token_provider::credentials::*;
-//!
-//! let credentials_provider =
-//!     SplitFileCredentialsProvider::with_default_parsers_from_env().unwrap();
-//!
-//! let token_provider =
-//!     ResourceOwnerPasswordCredentialsGrantProvider::from_env_with_credentials_provider(
-//!         credentials_provider,
-//!     ).unwrap();
-//!
-//! let token_group = ManagedTokenGroupBuilder::single_token(
-//!     "my_token_identifier",
-//!     vec![Scope::new("read_my_diary")],
-//!     token_provider,
-//! ).build()
-//!     .unwrap();
-//!
-//! let token_source = AccessTokenManager::start(vec![token_group]).unwrap();
-//!
-//! let access_token = token_source
-//!     .get_access_token(&"my_token_identifier")
-//!     .unwrap();
-//! ```
-//!
 //! ## License
 //!
 //! tokkit is primarily distributed under the terms of
 //! both the MIT license and the Apache License (Version 2.0).
 //!
 //! Copyright (c) 2017 Christian Douven
-#![recursion_limit = "1024"]
-
+//! Token verification for protected resources on resource servers.
+//!
+//! See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
+//! and
+//! [Roles](https://tools.ietf.org/html/rfc6749#section-1.1)
 #[macro_use]
 extern crate log;
 
 extern crate backoff;
 #[macro_use]
-extern crate error_chain;
+extern crate failure;
 extern crate json;
 extern crate reqwest;
 extern crate url;
 
-pub mod token_info;
-pub mod token_manager;
-
 use std::fmt;
-use std::env::VarError;
-use std::num::ParseFloatError;
-use std::error::Error;
+
+mod error;
+pub mod parsers;
+pub mod client;
+
+pub use error::{TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 
 /// An access token
 ///
@@ -135,45 +101,113 @@ impl fmt::Display for Scope {
     }
 }
 
+/// Gives a `TokenInfo` for an `AccessToken`.
+///
+/// See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
+pub trait TokenInfoService {
+    /// Gives a `TokenInfo` fa an `AccessToken`.
+    fn introspect(&self, token: &AccessToken) -> TokenInfoResult<TokenInfo>;
+}
+
 /// A `Result` where the failure is always an `InitializationError`
-pub type InitializationResult<T> = Result<T, InitializationError>;
+pub type InitializationResult<T> = ::std::result::Result<T, InitializationError>;
 
 /// An error to be returned if the initialization of a component
 /// or else fails.
 #[derive(Debug)]
 pub struct InitializationError(pub String);
 
-impl InitializationError {
-    /// Creates a new InitializationError therby allocating a String.
-    pub fn new<T: Into<String>>(message: T) -> InitializationError {
-        InitializationError(message.into())
+/// An id that uniquely identifies the owner of a protected resource
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+pub struct UserId(pub String);
+
+impl UserId {
+    pub fn new<T: Into<String>>(uid: T) -> UserId {
+        UserId(uid.into())
     }
 }
 
-impl fmt::Display for InitializationError {
+impl fmt::Display for UserId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Unauthorized: {}", self.0)
+        write!(f, "{}", self.0)
     }
 }
 
-impl Error for InitializationError {
-    fn description(&self) -> &str {
-        self.0.as_ref()
+/// Information on an `AccessToken` returned by a `TokenInfoService`.
+///
+/// See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
+#[derive(Debug, PartialEq)]
+pub struct TokenInfo {
+    /// REQUIRED.  Boolean indicator of whether or not the presented token
+    /// is currently active.  The specifics of a token's "active" state
+    /// will vary depending on the implementation of the authorization
+    /// server and the information it keeps about its tokens, but a "true"
+    /// value return for the "active" property will generally indicate
+    /// that a given token has been issued by this authorization server,
+    /// has not been revoked by the resource owner, and is within its
+    /// given time window of validity (e.g., after its issuance time and
+    /// before its expiration time).
+    /// See [Section 4](https://tools.ietf.org/html/rfc7662#section-4)
+    /// for information on implementation of such checks.
+    pub active: bool,
+    /// OPTIONAL.  Human-readable identifier for the resource owner who
+    /// authorized this token.
+    ///
+    /// Remark: This is usually not a human readable id but a custom field
+    /// since we are in the realm of S2S authorization.
+    pub user_id: Option<UserId>,
+    /// OPTIONAL.  A JSON string containing a space-separated list of
+    /// scopes associated with this token, in the format described in
+    /// [Section 3.3](https://tools.ietf.org/html/rfc7662#section-5.1)
+    /// of OAuth 2.0 [RFC6749](https://tools.ietf.org/html/rfc6749).
+    pub scope: Vec<Scope>,
+    /// OPTIONAL.  Integer timestamp, measured in the number of seconds
+    /// since January 1 1970 UTC, indicating when this token will expire,
+    /// as defined in JWT [RFC7519](https://tools.ietf.org/html/rfc7519).
+    ///
+    /// Remark: Contains the number of seconds until the token expires.
+    /// This seems to be used by most introspection services.
+    pub expires_in_seconds: Option<u64>,
+}
+
+impl TokenInfo {
+    /// Use for authorization. Checks whether this `TokenInfo` has the given
+    /// `Scope`.
+    pub fn has_scope(&self, scope: &Scope) -> bool {
+        self.scope.iter().find(|&s| s == scope).is_some()
     }
 
-    fn cause(&self) -> Option<&Error> {
-        None
+    /// Use for authorization. Checks whether this `TokenInfo` has all of the
+    /// given `Scopes`.
+    pub fn has_scopes(&self, scopes: &[Scope]) -> bool {
+        scopes.iter().all(|scope| self.has_scope(scope))
+    }
+
+    /// If the `TokenInfo` does not have the scope this method will fail.
+    pub fn must_have_scope(&self, scope: &Scope) -> ::std::result::Result<(), NotAuthorized> {
+        if self.has_scope(scope) {
+            Ok(())
+        } else {
+            Err(NotAuthorized(format!(
+                "Required scope '{}' not present.",
+                scope
+            )))
+        }
     }
 }
 
-impl From<VarError> for InitializationError {
-    fn from(err: VarError) -> Self {
-        InitializationError(format!("{}", err))
+/// There is no authorization for the requested resource
+#[derive(Debug, Fail)]
+pub struct NotAuthorized(String);
+
+impl NotAuthorized {
+    pub fn new<T: Into<String>>(msg: T) -> NotAuthorized {
+        NotAuthorized(msg.into())
     }
 }
 
-impl From<ParseFloatError> for InitializationError {
-    fn from(err: ParseFloatError) -> Self {
-        InitializationError(format!("{}", err))
+impl fmt::Display for NotAuthorized {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Not authorized: {}", self.0)
     }
 }

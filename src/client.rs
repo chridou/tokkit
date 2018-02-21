@@ -1,21 +1,29 @@
+//! Different implementations
+
 use std::sync::Arc;
 use std::io::Read;
 use std::env;
 use std::str;
-use reqwest::{Client, Response, StatusCode, Url, UrlError};
-use token_info::*;
-use token_info::error::Error;
+use std::time::Duration;
 
-/// A builder for a `RemoteTokenInfoService`
-pub struct RemoteTokenInfoServiceBuilder<P: TokenInfoParser> {
+use reqwest::{Client, Response, StatusCode, Url, UrlError};
+use failure::ResultExt;
+use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
+
+use {AccessToken, InitializationError, InitializationResult, TokenInfo};
+use parsers::*;
+use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult, TokenInfoService};
+
+/// A builder for a `TokenInfoServiceClient`
+pub struct TokenInfoServiceClientBuilder<P: TokenInfoParser> {
     pub parser: Option<P>,
     pub endpoint: Option<String>,
     pub query_parameter: Option<String>,
     pub fallback_endpoint: Option<String>,
 }
 
-impl<P: TokenInfoParser> RemoteTokenInfoServiceBuilder<P> {
-    /// Create a new `RemoteTokenInfoServiceBuilder` with the given `TokenInfoParser`
+impl<P: TokenInfoParser> TokenInfoServiceClientBuilder<P> {
+    /// Create a new `TokenInfoServiceClientBuilder` with the given `TokenInfoParser`
     /// already set.
     pub fn new(parser: P) -> Self {
         let mut builder = Self::default();
@@ -29,13 +37,15 @@ impl<P: TokenInfoParser> RemoteTokenInfoServiceBuilder<P> {
         self
     }
 
-    /// Sets the introspection endpoint. The introspection endpoint is mandatory.
+    /// Sets the introspection endpoint. The introspection endpoint is
+    /// mandatory.
     pub fn with_endpoint<T: Into<String>>(&mut self, endpoint: T) -> &mut Self {
         self.endpoint = Some(endpoint.into());
         self
     }
 
-    /// Sets a fallback for the introspection endpoint. The fallback is optional.
+    /// Sets a fallback for the introspection endpoint. The fallback is
+    /// optional.
     pub fn with_fallback_endpoint<T: Into<String>>(&mut self, endpoint: T) -> &mut Self {
         self.fallback_endpoint = Some(endpoint.into());
         self
@@ -48,8 +58,9 @@ impl<P: TokenInfoParser> RemoteTokenInfoServiceBuilder<P> {
         self
     }
 
-    /// Build the `RemoteTokenInfoService`. Fails if not all mandatory fields are set.
-    pub fn build(self) -> InitializationResult<RemoteTokenInfoService> {
+    /// Build the `TokenInfoServiceClient`. Fails if not all mandatory fields
+    /// are set.
+    pub fn build(self) -> InitializationResult<TokenInfoServiceClient> {
         let parser = if let Some(parser) = self.parser {
             parser
         } else {
@@ -62,7 +73,7 @@ impl<P: TokenInfoParser> RemoteTokenInfoServiceBuilder<P> {
             return Err(InitializationError("No endpoint.".into()));
         };
 
-        RemoteTokenInfoService::new::<P>(
+        TokenInfoServiceClient::new::<P>(
             &endpoint,
             self.query_parameter.as_ref().map(|s| &**s),
             self.fallback_endpoint.as_ref().map(|s| &**s),
@@ -70,7 +81,7 @@ impl<P: TokenInfoParser> RemoteTokenInfoServiceBuilder<P> {
         )
     }
 
-    /// Creates a new `RemoteTokenInfoServiceBuilder` from environment parameters.
+    /// Creates a new `TokenInfoServiceClientBuilder` from environment parameters.
     ///
     /// The following variables used to identify the field in a token info response:
     ///
@@ -104,7 +115,7 @@ impl<P: TokenInfoParser> RemoteTokenInfoServiceBuilder<P> {
                 )))
             }
         };
-        Ok(RemoteTokenInfoServiceBuilder {
+        Ok(TokenInfoServiceClientBuilder {
             parser: Default::default(),
             endpoint: Some(endpoint),
             query_parameter: query_parameter,
@@ -113,21 +124,19 @@ impl<P: TokenInfoParser> RemoteTokenInfoServiceBuilder<P> {
     }
 }
 
-impl RemoteTokenInfoServiceBuilder<parsers::PlanBTokenInfoParser> {
-    /// Create a new `RemoteTokenInfoService` with prepared settings.
+impl TokenInfoServiceClientBuilder<PlanBTokenInfoParser> {
+    /// Create a new `TokenInfoServiceClient` with prepared settings.
     ///
     /// [More information](http://planb.readthedocs.io/en/latest/intro.html#token-info)
-    pub fn plan_b(
-        endpoint: String,
-    ) -> RemoteTokenInfoServiceBuilder<parsers::PlanBTokenInfoParser> {
+    pub fn plan_b(endpoint: String) -> TokenInfoServiceClientBuilder<PlanBTokenInfoParser> {
         let mut builder = Self::default();
-        builder.with_parser(parsers::PlanBTokenInfoParser);
+        builder.with_parser(PlanBTokenInfoParser);
         builder.with_endpoint(endpoint);
         builder.with_query_parameter("access_token");
         builder
     }
 
-    /// Create a new `RemoteTokenInfoService` with prepared settings from environment variables.
+    /// Create a new `TokenInfoServiceClient` with prepared settings from environment variables.
     ///
     /// `TOKKIT_TOKEN_INTROSPECTION_ENDPOINT` and
     /// `TOKKIT_TOKEN_INTROSPECTION_FALLBACK_ENDPOINT` will be used and
@@ -135,45 +144,45 @@ impl RemoteTokenInfoServiceBuilder<parsers::PlanBTokenInfoParser> {
     ///
     /// [More information](http://planb.readthedocs.io/en/latest/intro.html#token-info)
     pub fn plan_b_from_env(
-) -> InitializationResult<RemoteTokenInfoServiceBuilder<parsers::PlanBTokenInfoParser>> {
+) -> InitializationResult<TokenInfoServiceClientBuilder<PlanBTokenInfoParser>> {
         let mut builder = Self::from_env()?;
-        builder.with_parser(parsers::PlanBTokenInfoParser);
+        builder.with_parser(PlanBTokenInfoParser);
         builder.with_query_parameter("access_token");
         Ok(builder)
     }
 }
 
-impl RemoteTokenInfoServiceBuilder<parsers::GoogleV3TokenInfoParser> {
-    /// Create a new `RemoteTokenInfoService` with prepared settings.
+impl TokenInfoServiceClientBuilder<GoogleV3TokenInfoParser> {
+    /// Create a new `TokenInfoServiceClient` with prepared settings.
     ///
     /// [More information](https://developers.google.
     /// com/identity/protocols/OAuth2UserAgent#validatetoken)
-    pub fn google_v3() -> RemoteTokenInfoServiceBuilder<parsers::GoogleV3TokenInfoParser> {
+    pub fn google_v3() -> TokenInfoServiceClientBuilder<GoogleV3TokenInfoParser> {
         let mut builder = Self::default();
-        builder.with_parser(parsers::GoogleV3TokenInfoParser);
+        builder.with_parser(GoogleV3TokenInfoParser);
         builder.with_endpoint("https://www.googleapis.com/oauth2/v3/tokeninfo");
         builder.with_query_parameter("access_token");
         builder
     }
 }
 
-impl RemoteTokenInfoServiceBuilder<parsers::AmazonTokenInfoParser> {
-    /// Create a new `RemoteTokenInfoService` with prepared settings.
+impl TokenInfoServiceClientBuilder<AmazonTokenInfoParser> {
+    /// Create a new `TokenInfoServiceClient` with prepared settings.
     ///
     /// [More information](https://images-na.ssl-images-amazon.
     /// com/images/G/01/lwa/dev/docs/website-developer-guide._TTH_.pdf)
-    pub fn amazon() -> RemoteTokenInfoServiceBuilder<parsers::AmazonTokenInfoParser> {
+    pub fn amazon() -> TokenInfoServiceClientBuilder<AmazonTokenInfoParser> {
         let mut builder = Self::default();
-        builder.with_parser(parsers::AmazonTokenInfoParser);
+        builder.with_parser(AmazonTokenInfoParser);
         builder.with_endpoint("https://api.amazon.com/auth/O2/tokeninfo");
         builder.with_query_parameter("access_token");
         builder
     }
 }
 
-impl<P: TokenInfoParser> Default for RemoteTokenInfoServiceBuilder<P> {
+impl<P: TokenInfoParser> Default for TokenInfoServiceClientBuilder<P> {
     fn default() -> Self {
-        RemoteTokenInfoServiceBuilder {
+        TokenInfoServiceClientBuilder {
             parser: Default::default(),
             endpoint: Default::default(),
             query_parameter: Default::default(),
@@ -186,23 +195,24 @@ impl<P: TokenInfoParser> Default for RemoteTokenInfoServiceBuilder<P> {
 ///
 /// Returns the result as a `TokenInfo`.
 ///
-/// The `RemoteTokenInfoService` will not do any retries on failures except possibly calling a
+/// The `TokenInfoServiceClient` will do retries on failures and if possible call a
 /// fallback.
-pub struct RemoteTokenInfoService {
+pub struct TokenInfoServiceClient {
     url_prefix: Arc<String>,
     fallback_url_prefix: Option<Arc<String>>,
     http_client: Client,
     parser: Arc<TokenInfoParser>,
 }
 
-impl RemoteTokenInfoService {
-    /// Creates a new `RemoteTokenInfoService`. Fails if one of the given endpoints is invalid.
+impl TokenInfoServiceClient {
+    /// Creates a new `TokenInfoServiceClient`. Fails if one of the given
+    /// endpoints is invalid.
     pub fn new<P>(
         endpoint: &str,
         query_parameter: Option<&str>,
         fallback_endpoint: Option<&str>,
         parser: P,
-    ) -> InitializationResult<RemoteTokenInfoService>
+    ) -> InitializationResult<TokenInfoServiceClient>
     where
         P: TokenInfoParser,
     {
@@ -219,7 +229,7 @@ impl RemoteTokenInfoService {
         };
 
         let client = Client::new();
-        Ok(RemoteTokenInfoService {
+        Ok(TokenInfoServiceClient {
             url_prefix: Arc::new(url_prefix),
             fallback_url_prefix: fallback_url_prefix.map(|fb| Arc::new(fb)),
             http_client: client,
@@ -250,8 +260,8 @@ fn assemble_url_prefix(
     Ok(url_prefix)
 }
 
-impl TokenInfoService for RemoteTokenInfoService {
-    fn introspect(&self, token: &AccessToken) -> Result<TokenInfo> {
+impl TokenInfoService for TokenInfoServiceClient {
+    fn introspect(&self, token: &AccessToken) -> TokenInfoResult<TokenInfo> {
         let url: Url = complete_url(&self.url_prefix, token)?;
         let fallback_url = match self.fallback_url_prefix {
             Some(ref fb_url_prefix) => Some(complete_url(fb_url_prefix, token)?),
@@ -261,9 +271,9 @@ impl TokenInfoService for RemoteTokenInfoService {
     }
 }
 
-impl Clone for RemoteTokenInfoService {
+impl Clone for TokenInfoServiceClient {
     fn clone(&self) -> Self {
-        RemoteTokenInfoService {
+        TokenInfoServiceClient {
             url_prefix: self.url_prefix.clone(),
             fallback_url_prefix: self.fallback_url_prefix.clone(),
             http_client: self.http_client.clone(),
@@ -272,7 +282,7 @@ impl Clone for RemoteTokenInfoService {
     }
 }
 
-fn complete_url(url_prefix: &str, token: &AccessToken) -> Result<Url> {
+fn complete_url(url_prefix: &str, token: &AccessToken) -> TokenInfoResult<Url> {
     let mut url_str = url_prefix.to_string();
     url_str.push_str(token.0.as_ref());
     let url = url_str.parse()?;
@@ -284,68 +294,105 @@ fn get_with_fallback(
     fallback_url: Option<Url>,
     client: &Client,
     parser: &TokenInfoParser,
-) -> Result<TokenInfo> {
-    get_remote(url, client, parser).or_else(|err| match err {
-        Error(ErrorKind::ClientError(_, _), _) => Err(err),
+) -> TokenInfoResult<TokenInfo> {
+    get_from_remote(url, client, parser).or_else(|err| match *err.kind() {
+        TokenInfoErrorKind::Client(_) => Err(err),
         _ => fallback_url
-            .map(|url| get_remote(url, client, parser))
+            .map(|url| get_from_remote(url, client, parser))
             .unwrap_or(Err(err)),
     })
 }
 
-fn get_remote(url: Url, http_client: &Client, parser: &TokenInfoParser) -> Result<TokenInfo> {
-    let mut request_builder = http_client.get(url);
-    match request_builder.send() {
-        Ok(ref mut response) => process_response(response, parser),
-        Err(err) => Err(ErrorKind::Connection(err.to_string()).into()),
+fn get_from_remote(
+    url: Url,
+    http_client: &Client,
+    parser: &TokenInfoParser,
+) -> TokenInfoResult<TokenInfo> {
+    let mut op = || match get_from_remote_no_retry(url.clone(), http_client, parser) {
+        Ok(token_info) => Ok(token_info),
+        Err(err) => match *err.kind() {
+            TokenInfoErrorKind::InvalidResponseContent(_) => Err(BackoffError::Permanent(err)),
+            TokenInfoErrorKind::UrlError(_) => Err(BackoffError::Permanent(err)),
+            TokenInfoErrorKind::NotAuthenticated(_) => Err(BackoffError::Permanent(err)),
+            TokenInfoErrorKind::Client(_) => Err(BackoffError::Permanent(err)),
+            _ => Err(BackoffError::Transient(err)),
+        },
+    };
+
+    let mut backoff = ExponentialBackoff::default();
+    backoff.max_elapsed_time = Some(Duration::from_millis(200));
+    backoff.initial_interval = Duration::from_millis(10);
+    backoff.multiplier = 1.5;
+
+    let notify = |err, _| {
+        warn!("Retry on token info service: {}", err);
+    };
+
+    let retry_result = op.retry_notify(&mut backoff, notify);
+
+    match retry_result {
+        Ok(token_info) => Ok(token_info),
+        Err(BackoffError::Transient(err)) => Err(err),
+        Err(BackoffError::Permanent(err)) => Err(err),
     }
 }
 
-fn process_response(response: &mut Response, parser: &TokenInfoParser) -> Result<TokenInfo> {
+fn get_from_remote_no_retry(
+    url: Url,
+    http_client: &Client,
+    parser: &TokenInfoParser,
+) -> TokenInfoResult<TokenInfo> {
+    let mut request_builder = http_client.get(url);
+    match request_builder.send() {
+        Ok(ref mut response) => process_response(response, parser),
+        Err(err) => Err(TokenInfoErrorKind::Connection(err.to_string()).into()),
+    }
+}
+
+fn process_response(
+    response: &mut Response,
+    parser: &TokenInfoParser,
+) -> TokenInfoResult<TokenInfo> {
     let mut body = Vec::new();
-    response.read_to_end(&mut body)?;
+    response
+        .read_to_end(&mut body)
+        .context(TokenInfoErrorKind::Io(
+            "Could not read response bode".to_string(),
+        ))?;
     if response.status() == StatusCode::Ok {
         let result: TokenInfo = match parser.parse(&body) {
             Ok(info) => info,
-            Err(msg) => bail!(ErrorKind::InvalidResponseContent(msg)),
+            Err(msg) => {
+                return Err(TokenInfoErrorKind::InvalidResponseContent(msg.to_string()).into())
+            }
         };
         Ok(result)
     } else if response.status() == StatusCode::Unauthorized {
         let msg = str::from_utf8(&body)?;
-        bail!(ErrorKind::NotAuthenticated(format!(
+        return Err(TokenInfoErrorKind::NotAuthenticated(format!(
             "The server refused the token: {}",
             msg
-        ),))
+        )).into());
     } else if response.status().is_client_error() {
         let msg = str::from_utf8(&body)?;
-        bail!(ErrorKind::ClientError(
-            response.status().to_string(),
-            msg.to_string(),
-        ))
+        return Err(TokenInfoErrorKind::Client(msg.to_string()).into());
     } else if response.status().is_server_error() {
         let msg = str::from_utf8(&body)?;
-        bail!(ErrorKind::ServerError(
-            response.status().to_string(),
-            msg.to_string(),
-        ))
+        return Err(TokenInfoErrorKind::Server(msg.to_string()).into());
     } else {
         let msg = str::from_utf8(&body)?;
-        bail!(format!(
-            "Unexpected response({}): {}",
-            response.status(),
-            msg
-        ))
+        return Err(TokenInfoErrorKind::Other(msg.to_string()).into());
     }
 }
 
-impl From<UrlError> for Error {
+impl From<UrlError> for TokenInfoError {
     fn from(what: UrlError) -> Self {
-        ErrorKind::UrlError(what.to_string()).into()
+        TokenInfoErrorKind::UrlError(what.to_string()).into()
     }
 }
 
-impl From<str::Utf8Error> for Error {
+impl From<str::Utf8Error> for TokenInfoError {
     fn from(what: str::Utf8Error) -> Self {
-        ErrorKind::InvalidResponseContent(what.to_string()).into()
+        TokenInfoErrorKind::InvalidResponseContent(what.to_string()).into()
     }
 }
