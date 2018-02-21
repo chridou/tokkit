@@ -22,7 +22,10 @@ pub struct TokenInfoServiceClientBuilder<P: TokenInfoParser> {
     pub fallback_endpoint: Option<String>,
 }
 
-impl<P: TokenInfoParser> TokenInfoServiceClientBuilder<P> {
+impl<P> TokenInfoServiceClientBuilder<P>
+where
+    P: TokenInfoParser + Sync + Send + 'static,
+{
     /// Create a new `TokenInfoServiceClientBuilder` with the given `TokenInfoParser`
     /// already set.
     pub fn new(parser: P) -> Self {
@@ -201,7 +204,7 @@ pub struct TokenInfoServiceClient {
     url_prefix: Arc<String>,
     fallback_url_prefix: Option<Arc<String>>,
     http_client: Client,
-    parser: Arc<TokenInfoParser>,
+    parser: Arc<TokenInfoParser + Sync + Send + 'static>,
 }
 
 impl TokenInfoServiceClient {
@@ -214,7 +217,7 @@ impl TokenInfoServiceClient {
         parser: P,
     ) -> InitializationResult<TokenInfoServiceClient>
     where
-        P: TokenInfoParser,
+        P: TokenInfoParser + Sync + Send + 'static,
     {
         let url_prefix = assemble_url_prefix(endpoint, &query_parameter)
             .map_err(|err| InitializationError(err))?;
