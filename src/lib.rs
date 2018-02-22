@@ -72,13 +72,25 @@ pub use error::{TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 /// An access token
 ///
 /// See [RFC6749](https://tools.ietf.org/html/rfc6749#section-1.4)
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AccessToken(pub String);
 
 impl AccessToken {
     /// Creates a new `AccessToken`
     pub fn new<T: Into<String>>(token: T) -> Self {
         AccessToken(token.into())
+    }
+}
+
+impl fmt::Display for AccessToken {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "<secret-access-token>")
+    }
+}
+
+impl fmt::Debug for AccessToken {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "AccessToken(<secret>)")
     }
 }
 
@@ -198,7 +210,7 @@ impl TokenInfo {
 
 /// There is no authorization for the requested resource
 #[derive(Debug, Fail)]
-pub struct NotAuthorized(String);
+pub struct NotAuthorized(pub String);
 
 impl NotAuthorized {
     pub fn new<T: Into<String>>(msg: T) -> NotAuthorized {
