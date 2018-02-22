@@ -7,15 +7,8 @@ use failure::*;
 use {Scope, TokenInfo, UserId};
 
 /// A parser that can parse a slice of bytes to a `TokenInfo`
-pub trait TokenInfoParser: 'static {
+pub trait TokenInfoParser: Send + 'static {
     fn parse(&self, bytes: &[u8]) -> Result<TokenInfo, Error>;
-}
-
-impl TokenInfoParser for Fn(&[u8]) -> ::std::result::Result<TokenInfo, Error> {
-    /// Parse a slice of bytes to a `TokenInfo`
-    fn parse(&self, bytes: &[u8]) -> Result<TokenInfo, Error> {
-        self(bytes)
-    }
 }
 
 /// A configurable `TokenInfoParser` that parses a `TokenInfo` from JSON
