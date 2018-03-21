@@ -64,6 +64,7 @@ extern crate url;
 use std::fmt;
 
 mod error;
+pub mod token_manager;
 pub mod parsers;
 pub mod client;
 
