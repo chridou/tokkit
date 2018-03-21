@@ -127,7 +127,8 @@ pub type InitializationResult<T> = ::std::result::Result<T, InitializationError>
 
 /// An error to be returned if the initialization of a component
 /// or else fails.
-#[derive(Debug)]
+#[derive(Debug, Fail)]
+#[fail(display = "{}", _0)]
 pub struct InitializationError(pub String);
 
 /// An id that uniquely identifies the owner of a protected resource
