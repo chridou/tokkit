@@ -571,7 +571,7 @@ impl AccessTokenManager {
 
     /// Starts the `AccessTokenManager` in the background and waits until all
     /// tokens have been initialized or a timeout elapsed..
-    pub fn start_and_wait<T: Eq + Ord + Send + Sync + Clone + Display + 'static>(
+    pub fn start_and_wait_for_tokens<T: Eq + Ord + Send + Sync + Clone + Display + 'static>(
         groups: Vec<ManagedTokenGroup<T>>,
         timeout_in: Duration,
     ) -> InitializationResult<AccessTokenSource<T>> {
@@ -604,20 +604,23 @@ impl AccessTokenManager {
                 ));
             }
 
-            let all_initialized = true;
-            /*  let all_initialized = inner.tokens.keys().all(|id| {
-                if let Err(token_error)Error(ErrorKind::NotInitialized(_), _)) = inner.get_access_token(id) {
-                    true
+            let all_initialized = inner.tokens.keys().all(|id| {
+                if let Err(token_error) = inner.get_access_token(id) {
+                    if let TokenErrorKind::NotInitialized(_) = *token_error.kind() {
+                        false
+                    } else {
+                        true
+                    }
                 } else {
-                    false
+                    true
                 }
-            });*/
+            });
 
             if all_initialized {
                 break;
             }
 
-            ::std::thread::sleep(Duration::from_millis(10));
+            ::std::thread::sleep(Duration::from_millis(5));
         }
 
         Ok(AccessTokenSource {
