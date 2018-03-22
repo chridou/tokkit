@@ -189,6 +189,22 @@ impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + Send + Sync + 'sta
         builder
     }
 
+    /// Sets everything needed to manage the give token.
+    ///
+    /// Ssopes are read from `TOKKIT_MANAGED_TOKEN_SCOPES`
+    pub fn single_token_from_env(
+        token_id: T,
+        token_provider: S,
+    ) -> StdResult<Sels, InitializationError> {
+        let managed_token_builder = ManagedTokenBuilder::with_identifier().with_scopes_from_env()?;
+        let managed_token = managed_token_builder.build()?;
+        let mut builder = Self::default();
+        builder.with_managed_token(managed_token);
+        builder.with_token_provider(token_provider);
+
+        builder
+    }
+
     /// Build the `ManagedTokenGroup`.
     ///
     /// Fails if not all required fields are set properly.
