@@ -195,14 +195,16 @@ impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + Send + Sync + 'sta
     pub fn single_token_from_env(
         token_id: T,
         token_provider: S,
-    ) -> StdResult<Sels, InitializationError> {
-        let managed_token_builder = ManagedTokenBuilder::with_identifier().with_scopes_from_env()?;
+    ) -> StdResult<Self, InitializationError> {
+        let mut managed_token_builder = ManagedTokenBuilder::default();
+        managed_token_builder.with_identifier(token_id);
+        let _ = managed_token_builder.with_scopes_from_env()?;
         let managed_token = managed_token_builder.build()?;
         let mut builder = Self::default();
         builder.with_managed_token(managed_token);
         builder.with_token_provider(token_provider);
 
-        builder
+        Ok(builder)
     }
 
     /// Build the `ManagedTokenGroup`.
