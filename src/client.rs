@@ -241,7 +241,7 @@ impl TokenInfoServiceClient {
     }
 }
 
-fn assemble_url_prefix(
+pub(crate) fn assemble_url_prefix(
     endpoint: &str,
     query_parameter: &Option<&str>,
 ) -> ::std::result::Result<String, String> {
@@ -285,7 +285,7 @@ impl Clone for TokenInfoServiceClient {
     }
 }
 
-fn complete_url(url_prefix: &str, token: &AccessToken) -> TokenInfoResult<Url> {
+pub(crate) fn complete_url(url_prefix: &str, token: &AccessToken) -> TokenInfoResult<Url> {
     let mut url_str = url_prefix.to_string();
     url_str.push_str(token.0.as_ref());
     let url = url_str.parse()?;

@@ -61,12 +61,25 @@ extern crate json;
 extern crate reqwest;
 extern crate url;
 
+#[cfg(feature = "async")]
+extern crate futures;
+#[cfg(feature = "async")]
+extern crate hyper;
+#[cfg(feature = "async")]
+extern crate hyper_tls;
+#[cfg(feature = "async")]
+extern crate tokio_core;
+#[cfg(feature = "async")]
+extern crate tokio_retry;
+
 use std::fmt;
 
 mod error;
 pub mod token_manager;
 pub mod parsers;
 pub mod client;
+#[cfg(feature = "async")]
+mod async_client;
 
 pub use error::{TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 
@@ -118,7 +131,7 @@ impl fmt::Display for Scope {
 ///
 /// See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
 pub trait TokenInfoService {
-    /// Gives a `TokenInfo` fa an `AccessToken`.
+    /// Gives a `TokenInfo` for an `AccessToken`.
     fn introspect(&self, token: &AccessToken) -> TokenInfoResult<TokenInfo>;
 }
 
