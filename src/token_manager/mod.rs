@@ -142,7 +142,8 @@ pub struct ManagedTokenGroupBuilder<T, S: AccessTokenProvider + 'static> {
 }
 
 impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + Send + Sync + 'static>
-    ManagedTokenGroupBuilder<T, S> {
+    ManagedTokenGroupBuilder<T, S>
+{
     /// Sets the `AccessTokenProvider` for this group of `ManagedToken`s.
     /// This is a mandatory value.
     pub fn with_token_provider(&mut self, token_provider: S) -> &mut Self {
@@ -247,7 +248,8 @@ impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + Send + Sync + 'sta
 }
 
 impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + 'static> Default
-    for ManagedTokenGroupBuilder<T, S> {
+    for ManagedTokenGroupBuilder<T, S>
+{
     fn default() -> Self {
         ManagedTokenGroupBuilder {
             token_provider: Default::default(),

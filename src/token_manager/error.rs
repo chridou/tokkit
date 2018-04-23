@@ -47,7 +47,8 @@ impl fmt::Display for TokenError {
 
 #[derive(Debug, Clone, Fail)]
 pub enum TokenErrorKind {
-    #[fail(display = "{}", _0)] NoToken(String),
+    #[fail(display = "{}", _0)]
+    NoToken(String),
     /// The token with the given identifier is not yet initialized
     #[fail(display = "{}", _0)]
     NotInitialized(String),
