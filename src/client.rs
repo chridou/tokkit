@@ -14,6 +14,11 @@ use {AccessToken, InitializationError, InitializationResult, TokenInfo};
 use parsers::*;
 use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult, TokenInfoService};
 
+#[cfg(feature = "async")]
+use tokio_core::reactor::Handle;
+#[cfg(feature = "async")]
+use async_client::AsyncTokenInfoServiceClient;
+
 /// A builder for a `TokenInfoServiceClient`
 pub struct TokenInfoServiceClientBuilder<P: TokenInfoParser> {
     pub parser: Option<P>,
@@ -81,6 +86,31 @@ where
             self.query_parameter.as_ref().map(|s| &**s),
             self.fallback_endpoint.as_ref().map(|s| &**s),
             parser,
+        )
+    }
+
+    /// Build the `TokenInfoServiceClient`. Fails if not all mandatory fields
+    /// are set.
+    #[cfg(feature = "async")]
+    pub fn build_async(self, handle: &Handle) -> InitializationResult<AsyncTokenInfoServiceClient> {
+        let parser = if let Some(parser) = self.parser {
+            parser
+        } else {
+            return Err(InitializationError("No token info parser.".into()));
+        };
+
+        let endpoint = if let Some(endpoint) = self.endpoint {
+            endpoint
+        } else {
+            return Err(InitializationError("No endpoint.".into()));
+        };
+
+        AsyncTokenInfoServiceClient::new::<P>(
+            &endpoint,
+            self.query_parameter.as_ref().map(|s| &**s),
+            self.fallback_endpoint.as_ref().map(|s| &**s),
+            parser,
+            handle,
         )
     }
 
@@ -285,7 +315,7 @@ impl Clone for TokenInfoServiceClient {
     }
 }
 
-pub(crate) fn complete_url(url_prefix: &str, token: &AccessToken) -> TokenInfoResult<Url> {
+fn complete_url(url_prefix: &str, token: &AccessToken) -> TokenInfoResult<Url> {
     let mut url_str = url_prefix.to_string();
     url_str.push_str(token.0.as_ref());
     let url = url_str.parse()?;

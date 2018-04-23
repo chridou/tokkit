@@ -13,6 +13,20 @@ impl TokenInfoError {
     pub fn kind(&self) -> &TokenInfoErrorKind {
         &self.inner.get_context()
     }
+
+    pub fn is_retry_suggested(&self) -> bool {
+        use TokenInfoErrorKind::*;
+        match *self.kind() {
+            InvalidResponseContent(_) => false,
+            UrlError(_) => false,
+            NotAuthenticated(_) => true,
+            Connection(_) => true,
+            Io(_) => true,
+            Client(_) => false,
+            Server(_) => true,
+            Other(_) => true,
+        }
+    }
 }
 
 impl Fail for TokenInfoError {
