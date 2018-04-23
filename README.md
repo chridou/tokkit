@@ -40,10 +40,10 @@ let token = AccessToken::new("<token>");
 let tokeninfo = service.introspect(&token).unwrap();
 ```
 
-## Recen changes
+## Recent changes
 
 * 0.8.1
-   * Added experimental supprt for saync clinet.
+   * Added experimental support for async client.
 
 ## License
 
