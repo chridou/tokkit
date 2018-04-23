@@ -143,8 +143,13 @@ impl AsyncTokenInfoService for AsyncTokenInfoServiceClient {
             }
         };
 
+        let mut n = 1;
         let condition = move |err: &TokenInfoError| {
-            warn!("Retry on token introspection service: {}", err);
+            warn!(
+                "Retry({}) on token introspection service. Reason: {}",
+                n, err
+            );
+            n += 1;
             Instant::now() <= deadline && err.is_retry_suggested()
         };
 
