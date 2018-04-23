@@ -40,6 +40,11 @@
 //! let tokeninfo = service.introspect(&token).unwrap();
 //! ```
 //!
+//! ## Recen changes
+//!
+//! * 0.8.1
+//!    * Added experimental supprt for saync clinet.
+//!
 //! ## License
 //!
 //! tokkit is primarily distributed under the terms of

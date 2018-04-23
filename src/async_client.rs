@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::rc::Rc;
 
 use futures::*;
@@ -9,14 +9,14 @@ use hyper::{Response, StatusCode, Uri};
 use hyper_tls;
 
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
-use tokio_retry::Retry;
+use tokio_retry::RetryIf;
 
 use {AccessToken, InitializationError, InitializationResult, TokenInfo};
 use parsers::*;
 use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 use client::assemble_url_prefix;
 
-type HttpClient = hyper::Client<hyper_tls::HttpsConnector<hyper::client::HttpConnector>>;
+pub type HttpClient = hyper::Client<hyper_tls::HttpsConnector<hyper::client::HttpConnector>>;
 
 /// Gives a `TokenInfo` for an `AccessToken`.
 ///
@@ -53,6 +53,29 @@ impl AsyncTokenInfoServiceClient {
     where
         P: TokenInfoParser + Send + 'static,
     {
+        let http_client = ::hyper::Client::configure()
+            .connector(::hyper_tls::HttpsConnector::new(4, handle)?)
+            .build(handle);
+
+        AsyncTokenInfoServiceClient::with_client(
+            endpoint,
+            query_parameter,
+            fallback_endpoint,
+            parser,
+            Rc::new(http_client),
+        )
+    }
+
+    pub fn with_client<P>(
+        endpoint: &str,
+        query_parameter: Option<&str>,
+        fallback_endpoint: Option<&str>,
+        parser: P,
+        http_client: Rc<HttpClient>,
+    ) -> InitializationResult<AsyncTokenInfoServiceClient>
+    where
+        P: TokenInfoParser + Send + 'static,
+    {
         let url_prefix = assemble_url_prefix(endpoint, &query_parameter)
             .map_err(|err| InitializationError(err))?;
 
@@ -65,15 +88,11 @@ impl AsyncTokenInfoServiceClient {
             None
         };
 
-        let client = ::hyper::Client::configure()
-            .connector(::hyper_tls::HttpsConnector::new(4, handle)?)
-            .build(handle);
-
         Ok(AsyncTokenInfoServiceClient {
             url_prefix: Rc::new(url_prefix),
             fallback_url_prefix: fallback_url_prefix.map(|fb| Rc::new(fb)),
-            http_client: Rc::new(client),
             parser: Rc::new(parser),
+            http_client,
         })
     }
 }
@@ -102,34 +121,43 @@ impl AsyncTokenInfoService for AsyncTokenInfoServiceClient {
             ));
         }
 
-        let retry_fut = {
-            let token = token.clone();
-            let http_client = self.http_client.clone();
+        let deadline = Instant::now() + budget;
+        let token = token.clone();
+        let http_client = self.http_client.clone();
 
-            let url_prefix = self.url_prefix.clone();
-            let parser = self.parser.clone();
+        let url_prefix = self.url_prefix.clone();
+        let parser = self.parser.clone();
 
-            let retry_strategy = ExponentialBackoff::from_millis(10).map(jitter).take(3);
-            let action = move || {
+        let retry_strategy = ExponentialBackoff::from_millis(10).map(jitter);
+
+        let action = move || {
+            if Instant::now() <= deadline {
                 execute_once(
                     http_client.clone(),
                     token.clone(),
                     &url_prefix.clone(),
                     parser.clone(),
                 )
-            };
-
-            let future =
-                Retry::spawn(retry_strategy, action).map_err(|retry_err| match retry_err {
-                    ::tokio_retry::Error::OperationError(op_err) => op_err,
-                    ::tokio_retry::Error::TimerError(err) => {
-                        TokenInfoErrorKind::Io(format!("Retry Timer Error: {} ", err)).into()
-                    }
-                });
-            future
+            } else {
+                Box::new(future::err(TokenInfoErrorKind::BudgetExceeded.into()))
+            }
         };
 
-        Box::new(retry_fut)
+        let condition = move |err: &TokenInfoError| {
+            warn!("Retry on token introspection service: {}", err);
+            Instant::now() <= deadline && err.is_retry_suggested()
+        };
+
+        let future = RetryIf::spawn(retry_strategy, action, condition).map_err(|retry_err| {
+            match retry_err {
+                ::tokio_retry::Error::OperationError(op_err) => op_err,
+                ::tokio_retry::Error::TimerError(err) => {
+                    TokenInfoErrorKind::Io(format!("Retry Timer Error: {} ", err)).into()
+                }
+            }
+        });
+
+        Box::new(future)
     }
 }
 
