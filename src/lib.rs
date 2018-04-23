@@ -42,6 +42,8 @@
 //!
 //! ## Recent changes
 //!
+//! * 0.8.2
+//!    * Minor changes
 //! * 0.8.1
 //!    * Added experimental support for async client.
 //!
