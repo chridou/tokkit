@@ -25,6 +25,7 @@ impl TokenInfoError {
             Client(_) => false,
             Server(_) => true,
             Other(_) => true,
+            BudgetExceeded => false,
         }
     }
 }
@@ -77,4 +78,6 @@ pub enum TokenInfoErrorKind {
     Server(String),
     #[fail(display = "{}", _0)]
     Other(String),
+    #[fail(display = "Request budget on tokenintrospection service exceeded")]
+    BudgetExceeded,
 }

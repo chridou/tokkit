@@ -9,7 +9,7 @@ use hyper::{Response, StatusCode, Uri};
 use hyper_tls;
 
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
-use tokio_retry::Retry;
+use tokio_retry::RetryIf;
 
 use {AccessToken, InitializationError, InitializationResult, TokenInfo};
 use parsers::*;
@@ -17,7 +17,7 @@ use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 use client::assemble_url_prefix;
 use metrics::{DevNullMetricsCollector, MetricsCollector};
 
-type HttpClient = hyper::Client<hyper_tls::HttpsConnector<hyper::client::HttpConnector>>;
+pub type HttpClient = hyper::Client<hyper_tls::HttpsConnector<hyper::client::HttpConnector>>;
 
 /// Gives a `TokenInfo` for an `AccessToken`.
 ///
@@ -89,16 +89,18 @@ impl AsyncTokenInfoServiceClient {
             None
         };
 
-        let client = ::hyper::Client::configure()
+        let http_client = ::hyper::Client::configure()
             .connector(::hyper_tls::HttpsConnector::new(4, handle)?)
             .build(handle);
+
+        let http_client = Rc::new(http_client);
 
         Ok(AsyncTokenInfoServiceClient {
             url_prefix: Rc::new(url_prefix),
             fallback_url_prefix: fallback_url_prefix.map(|fb| Rc::new(fb)),
-            http_client: Rc::new(client),
             parser: Rc::new(parser),
             metrics_collector: Rc::new(metrics_collector),
+            http_client,
         })
     }
 }
@@ -225,14 +227,18 @@ fn execute_with_retry(
         ));
     }
 
-    let retry_fut = {
-        let token = token.clone();
-        let http_client = http_client.clone();
-        let url_prefix = url_prefix.to_string();
-        let parser = parser.clone();
+    let deadline = Instant::now() + budget;
+    let token = token.clone();
+    let http_client = http_client.clone();
+    let metrics_collector = metrics_collector.clone();
 
-        let retry_strategy = ExponentialBackoff::from_millis(10).map(jitter).take(3);
-        let action = move || {
+    let url_prefix = url_prefix.to_string();
+    let parser = parser.clone();
+
+    let retry_strategy = ExponentialBackoff::from_millis(10).map(jitter);
+
+    let action = move || {
+        if Instant::now() <= deadline {
             execute_once(
                 http_client.clone(),
                 token.clone(),
@@ -240,18 +246,30 @@ fn execute_with_retry(
                 parser.clone(),
                 metrics_collector.clone(),
             )
-        };
+        } else {
+            Box::new(future::err(TokenInfoErrorKind::BudgetExceeded.into()))
+        }
+    };
 
-        let future = Retry::spawn(retry_strategy, action).map_err(|retry_err| match retry_err {
+    let mut n = 1;
+    let condition = move |err: &TokenInfoError| {
+        warn!(
+            "Retry({}) on token introspection service. Reason: {}",
+            n, err
+        );
+        n += 1;
+        Instant::now() <= deadline && err.is_retry_suggested()
+    };
+
+    let future =
+        RetryIf::spawn(retry_strategy, action, condition).map_err(|retry_err| match retry_err {
             ::tokio_retry::Error::OperationError(op_err) => op_err,
             ::tokio_retry::Error::TimerError(err) => {
                 TokenInfoErrorKind::Io(format!("Retry Timer Error: {} ", err)).into()
             }
         });
-        future
-    };
 
-    Box::new(retry_fut)
+    Box::new(future)
 }
 
 fn execute_once(

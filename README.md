@@ -1,9 +1,17 @@
 # tokkit
 
-[![crates.io](https://img.shields.io/crates/v/tokkit.svg)](https://crates.io/crates/tokkit) [![docs.rs](https://docs.rs/tokkit/badge.svg)](https://docs.rs/tokkit) [![downloads](https://img.shields.io/crates/d/tokkit.svg)](https://crates.io/crates/tokkit) [![Build Status](https://travis-ci.org/chridou/tokkit.svg?branch=master)](https://travis-ci.org/chridou/tokkit) [![license-mit](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/chridou/tokkit/blob/master/LICENSE-MIT) [![license-apache](http://img.shields.io/badge/license-APACHE-blue.svg)](https://github.com/chridou/tokkit/blob/master/LICENSE-APACHE)
+[![crates.io](https://img.shields.io/crates/v/tokkit.svg)](https://crates.io/crates/tokkit)
+[![docs.rs](https://docs.rs/tokkit/badge.svg)](https://docs.rs/tokkit)
+[![downloads](https://img.shields.io/crates/d/tokkit.svg)](https://crates.io/crates/tokkit)
+[![build Status](https://travis-ci.org/chridou/tokkit.svg?branch=master)](https://travis-ci.
+org/chridou/tokkit)
+[![license-mit](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.
+com/chridou/tokkit/blob/master/LICENSE-MIT)
+[![license-apache](http://img.shields.io/badge/license-APACHE-blue.svg)](https://github.
+com/chridou/tokkit/blob/master/LICENSE-APACHE)
 
-`tokkit` is a simple(even simplistic) **tok**en tool**kit** for OAUTH2 authorization
-targetting service to service authorization.
+`tokkit` is a simple(even simplistic) **tok**en tool**kit** for OAUTH2 token
+introspection
 
 ## Adding tokkit to your project
 
@@ -19,12 +27,11 @@ The documentation is available [online](https://docs.rs/tokkit).
 
 `tokkit` contains a module `token_info` for protected resources to verify access tokens.
 
-```rust,no_run
+```rust
 use tokkit::*;
+use tokkit::client::*;
 
-use tokkit::token_info::*;
-
-let builder = RemoteTokenInfoServiceBuilder::google_v3();
+let builder = TokenInfoServiceClientBuilder::google_v3();
 
 let service = builder.build().unwrap();
 
@@ -33,44 +40,23 @@ let token = AccessToken::new("<token>");
 let tokeninfo = service.introspect(&token).unwrap();
 ```
 
-### Managing Tokens
+## Recent changes
 
-`tokkit` can manage and automatically update your access tokens if you
-are a client and want to access a resource owners resources.
-
-Currently `tokkit` only supports the
-[Resource Owner Password Credentials Grant](https://tools.ietf.org/html/rfc6749#section-4.3)
-which should only be used if the resource owner can really trust the client.
-
-```rust,no_run
-use tokkit::*;
-use tokkit::token_manager::*;
-use tokkit::token_manager::token_provider::*;
-use tokkit::token_manager::token_provider::credentials::*;
-
-let credentials_provider = SplitFileCredentialsProvider::with_default_parsers_from_env()
-    .unwrap();
-
-let token_provider =
-    ResourceOwnerPasswordCredentialsGrantProvider
-        ::from_env_with_credentials_provider(credentials_provider)
-        .unwrap();
-
-let token_group =
-    ManagedTokenGroupBuilder::single_token(
-        "my_token_identifier", 
-        vec![Scope::new("read_my_diary")], 
-        token_provider)
-    .build()
-    .unwrap();
-
-let token_source = AccessTokenManager::start(vec![token_group]).unwrap();
-
-let access_token = token_source.get_access_token(&"my_token_identifier").unwrap();
-```
+* 0.8.2
+   * Minor changes
+* 0.8.1
+   * Added experimental support for async client.
 
 ## License
 
 tokkit is primarily distributed under the terms of
 both the MIT license and the Apache License (Version 2.0).
+
 Copyright (c) 2017 Christian Douven
+Token verification for protected resources on resource servers.
+
+See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
+and
+[Roles](https://tools.ietf.org/html/rfc6749#section-1.1)
+
+License: Apache-2.0/MIT
