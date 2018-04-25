@@ -13,14 +13,27 @@ use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
 use {AccessToken, InitializationError, InitializationResult, TokenInfo};
 use parsers::*;
 use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult, TokenInfoService};
-use metrics::{DevNullMetricsCollector, MetricsCollector};
 
+#[cfg(feature = "metrix")]
+use metrics::metrix::MetrixCollector;
+#[cfg(feature = "metrix")]
+use metrix::processor::{AggregatesProcessors, ProcessorMount};
+#[cfg(feature = "async")]
+use metrics::{DevNullMetricsCollector, MetricsCollector};
 #[cfg(feature = "async")]
 use tokio_core::reactor::Handle;
 #[cfg(feature = "async")]
 use async_client::AsyncTokenInfoServiceClient;
 
 /// A builder for a `TokenInfoServiceClient`
+///
+/// # Features
+///
+/// * `async` enables
+///     * `build_async`
+///     * `build_async_with_metrics`
+/// * `async` + `metrix` enables
+///     * `build_async_with_metrix`
 pub struct TokenInfoServiceClientBuilder<P: TokenInfoParser> {
     pub parser: Option<P>,
     pub endpoint: Option<String>,
@@ -128,6 +141,35 @@ where
             handle,
             metrics_collector,
         )
+    }
+
+    /// Build the `TokenInfoServiceClient`. Fails if not all mandatory fields
+    /// are set.
+    ///
+    /// If `group_name` is defined a new group with the given
+    /// name will be created. Otherwise the metrics of the
+    /// client will be directly added to `takes_metrics`.
+    #[cfg(all(feature = "async", feature = "metrix"))]
+    pub fn build_async_with_metrix<M, T>(
+        self,
+        handle: &Handle,
+        takes_metrics: &mut M,
+        group_name: Option<T>,
+    ) -> InitializationResult<AsyncTokenInfoServiceClient>
+    where
+        M: AggregatesProcessors,
+        T: Into<String>,
+    {
+        let metrics_collector = if let Some(group) = group_name {
+            let mut mount = ProcessorMount::new(group);
+            let collector = MetrixCollector::new(&mut mount);
+            takes_metrics.add_processor(mount);
+            collector
+        } else {
+            MetrixCollector::new(takes_metrics)
+        };
+
+        self.build_async_with_metrics(handle, metrics_collector)
     }
 
     /// Creates a new `TokenInfoServiceClientBuilder` from environment parameters.

@@ -28,6 +28,10 @@ pub trait AsyncTokenInfoService {
         &self,
         token: &AccessToken,
     ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>>;
+    /// Gives a `TokenInfo` for an `AccessToken` with retries.
+    ///
+    /// `budget` defines the duration the retries may take
+    /// until the whole call is considered a failure.
     fn introspect_with_retry(
         &self,
         token: &AccessToken,
@@ -124,11 +128,11 @@ impl AsyncTokenInfoService for AsyncTokenInfoServiceClient {
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_successful(start)
+                    metrics_collector.introspection_request_success(start)
                 }
                 Err(_) => {
                     metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_failed(start)
+                    metrics_collector.introspection_request_failure(start)
                 }
             }
             result
@@ -156,11 +160,11 @@ impl AsyncTokenInfoService for AsyncTokenInfoServiceClient {
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_successful(start)
+                    metrics_collector.introspection_request_success(start)
                 }
                 Err(_) => {
                     metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_failed(start)
+                    metrics_collector.introspection_request_failure(start)
                 }
             }
             result
@@ -285,12 +289,12 @@ fn execute_once(
         .then(move |result| {
             match result {
                 Ok(_) => {
-                    metrics_collector.introspection_service_called(start);
-                    metrics_collector.introspection_service_called_successfully(start)
+                    metrics_collector.introspection_service_call(start);
+                    metrics_collector.introspection_service_call_success(start)
                 }
                 Err(_) => {
-                    metrics_collector.introspection_service_called(start);
-                    metrics_collector.introspection_service_called_and_failed(start)
+                    metrics_collector.introspection_service_call(start);
+                    metrics_collector.introspection_service_call_failure(start)
                 }
             }
             result

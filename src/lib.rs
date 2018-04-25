@@ -23,6 +23,12 @@
 //!
 //! ## Features
 //!
+//! * `async`: Adds a `hyper` based async client.
+//! See also `TokenInfoServiceClientBuilder`
+//! * `metrix`: Add support for the [metrix](https://crates.io/crates/metrix)
+//! crate(async client only)
+//! See also `TokenInfoServiceClientBuilder`
+//!
 //! ### Verify Access Tokens
 //!
 //! `tokkit` contains a module `token_info` for protected resources to verify access tokens.
@@ -42,8 +48,12 @@
 //!
 //! ## Recent changes
 //!
+//! * 0.8.4
+//!    * Added support for [metrix](https://crates.io/crates/metrix)
+//! * 0.8.3
+//!    * Added metrics
 //! * 0.8.2
-//!    * Minor changes
+//!    * Added retries for async client
 //! * 0.8.1
 //!    * Added experimental support for async client.
 //!
@@ -74,6 +84,8 @@ extern crate futures;
 extern crate hyper;
 #[cfg(feature = "async")]
 extern crate hyper_tls;
+#[cfg(feature = "metrix")]
+extern crate metrix;
 #[cfg(feature = "async")]
 extern crate tokio_core;
 #[cfg(feature = "async")]
