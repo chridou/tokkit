@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::rc::Rc;
 
 use futures::*;
@@ -15,6 +15,7 @@ use {AccessToken, InitializationError, InitializationResult, TokenInfo};
 use parsers::*;
 use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 use client::assemble_url_prefix;
+use metrics::{DevNullMetricsCollector, MetricsCollector};
 
 type HttpClient = hyper::Client<hyper_tls::HttpsConnector<hyper::client::HttpConnector>>;
 
@@ -40,6 +41,7 @@ pub struct AsyncTokenInfoServiceClient {
     fallback_url_prefix: Option<Rc<String>>,
     http_client: Rc<HttpClient>,
     parser: Rc<TokenInfoParser + Send + 'static>,
+    metrics_collector: Rc<MetricsCollector + 'static>,
 }
 
 impl AsyncTokenInfoServiceClient {
@@ -52,6 +54,28 @@ impl AsyncTokenInfoServiceClient {
     ) -> InitializationResult<AsyncTokenInfoServiceClient>
     where
         P: TokenInfoParser + Send + 'static,
+    {
+        AsyncTokenInfoServiceClient::with_metrics(
+            endpoint,
+            query_parameter,
+            fallback_endpoint,
+            parser,
+            handle,
+            DevNullMetricsCollector,
+        )
+    }
+
+    pub fn with_metrics<P, M>(
+        endpoint: &str,
+        query_parameter: Option<&str>,
+        fallback_endpoint: Option<&str>,
+        parser: P,
+        handle: &Handle,
+        metrics_collector: M,
+    ) -> InitializationResult<AsyncTokenInfoServiceClient>
+    where
+        P: TokenInfoParser + Send + 'static,
+        M: MetricsCollector + 'static,
     {
         let url_prefix = assemble_url_prefix(endpoint, &query_parameter)
             .map_err(|err| InitializationError(err))?;
@@ -74,6 +98,7 @@ impl AsyncTokenInfoServiceClient {
             fallback_url_prefix: fallback_url_prefix.map(|fb| Rc::new(fb)),
             http_client: Rc::new(client),
             parser: Rc::new(parser),
+            metrics_collector: Rc::new(metrics_collector),
         })
     }
 }
@@ -83,12 +108,30 @@ impl AsyncTokenInfoService for AsyncTokenInfoServiceClient {
         &self,
         token: &AccessToken,
     ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>> {
-        execute_once(
+        let start = Instant::now();
+        self.metrics_collector.incoming_introspection_request();
+
+        let metrics_collector = self.metrics_collector.clone();
+        let f = execute_once(
             self.http_client.clone(),
             token.clone(),
             &self.url_prefix,
             self.parser.clone(),
-        )
+            self.metrics_collector.clone(),
+        ).then(move |result| {
+            match result {
+                Ok(_) => {
+                    metrics_collector.introspection_request(start);
+                    metrics_collector.introspection_request_successful(start)
+                }
+                Err(_) => {
+                    metrics_collector.introspection_request(start);
+                    metrics_collector.introspection_request_failed(start)
+                }
+            }
+            result
+        });
+        Box::new(f)
     }
 
     fn introspect_with_retry(
@@ -96,40 +139,31 @@ impl AsyncTokenInfoService for AsyncTokenInfoServiceClient {
         token: &AccessToken,
         budget: Duration,
     ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>> {
-        if budget == Duration::from_secs(0) {
-            return Box::new(future::err(
-                TokenInfoErrorKind::Other("Initial reuest budget was 0".into()).into(),
-            ));
-        }
+        let start = Instant::now();
+        self.metrics_collector.incoming_introspection_request();
 
-        let retry_fut = {
-            let token = token.clone();
-            let http_client = self.http_client.clone();
-
-            let url_prefix = self.url_prefix.clone();
-            let parser = self.parser.clone();
-
-            let retry_strategy = ExponentialBackoff::from_millis(10).map(jitter).take(3);
-            let action = move || {
-                execute_once(
-                    http_client.clone(),
-                    token.clone(),
-                    &url_prefix.clone(),
-                    parser.clone(),
-                )
-            };
-
-            let future =
-                Retry::spawn(retry_strategy, action).map_err(|retry_err| match retry_err {
-                    ::tokio_retry::Error::OperationError(op_err) => op_err,
-                    ::tokio_retry::Error::TimerError(err) => {
-                        TokenInfoErrorKind::Io(format!("Retry Timer Error: {} ", err)).into()
-                    }
-                });
-            future
-        };
-
-        Box::new(retry_fut)
+        let metrics_collector = self.metrics_collector.clone();
+        let f = execute_with_retry(
+            self.http_client.clone(),
+            token.clone(),
+            &self.url_prefix,
+            self.parser.clone(),
+            budget,
+            self.metrics_collector.clone(),
+        ).then(move |result| {
+            match result {
+                Ok(_) => {
+                    metrics_collector.introspection_request(start);
+                    metrics_collector.introspection_request_successful(start)
+                }
+                Err(_) => {
+                    metrics_collector.introspection_request(start);
+                    metrics_collector.introspection_request_failed(start)
+                }
+            }
+            result
+        });
+        Box::new(f)
     }
 }
 
@@ -177,14 +211,72 @@ fn process_response(
     Box::new(f)
 }
 
+fn execute_with_retry(
+    http_client: Rc<HttpClient>,
+    token: AccessToken,
+    url_prefix: &str,
+    parser: Rc<TokenInfoParser + 'static>,
+    budget: Duration,
+    metrics_collector: Rc<MetricsCollector>,
+) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>> {
+    if budget == Duration::from_secs(0) {
+        return Box::new(future::err(
+            TokenInfoErrorKind::Other("Initial reuest budget was 0".into()).into(),
+        ));
+    }
+
+    let retry_fut = {
+        let token = token.clone();
+        let http_client = http_client.clone();
+        let url_prefix = url_prefix.to_string();
+        let parser = parser.clone();
+
+        let retry_strategy = ExponentialBackoff::from_millis(10).map(jitter).take(3);
+        let action = move || {
+            execute_once(
+                http_client.clone(),
+                token.clone(),
+                &url_prefix.clone(),
+                parser.clone(),
+                metrics_collector.clone(),
+            )
+        };
+
+        let future = Retry::spawn(retry_strategy, action).map_err(|retry_err| match retry_err {
+            ::tokio_retry::Error::OperationError(op_err) => op_err,
+            ::tokio_retry::Error::TimerError(err) => {
+                TokenInfoErrorKind::Io(format!("Retry Timer Error: {} ", err)).into()
+            }
+        });
+        future
+    };
+
+    Box::new(retry_fut)
+}
+
 fn execute_once(
     client: Rc<HttpClient>,
     token: AccessToken,
     url_prefix: &str,
     parser: Rc<TokenInfoParser + 'static>,
+    metrics_collector: Rc<MetricsCollector>,
 ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>> {
+    let start = Instant::now();
     let f = future::result(complete_url(url_prefix, &token))
         .and_then(move |uri| client.get(uri).map_err(Into::into))
+        .then(move |result| {
+            match result {
+                Ok(_) => {
+                    metrics_collector.introspection_service_called(start);
+                    metrics_collector.introspection_service_called_successfully(start)
+                }
+                Err(_) => {
+                    metrics_collector.introspection_service_called(start);
+                    metrics_collector.introspection_service_called_and_failed(start)
+                }
+            }
+            result
+        })
         .and_then(|response| process_response(response, parser));
     Box::new(f)
 }

@@ -80,6 +80,7 @@ pub mod parsers;
 pub mod client;
 #[cfg(feature = "async")]
 pub mod async_client;
+pub mod metrics;
 
 pub use error::{TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 

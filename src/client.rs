@@ -13,6 +13,7 @@ use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
 use {AccessToken, InitializationError, InitializationResult, TokenInfo};
 use parsers::*;
 use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult, TokenInfoService};
+use metrics::{DevNullMetricsCollector, MetricsCollector};
 
 #[cfg(feature = "async")]
 use tokio_core::reactor::Handle;
@@ -93,6 +94,20 @@ where
     /// are set.
     #[cfg(feature = "async")]
     pub fn build_async(self, handle: &Handle) -> InitializationResult<AsyncTokenInfoServiceClient> {
+        self.build_async_with_metrics(handle, DevNullMetricsCollector)
+    }
+
+    /// Build the `TokenInfoServiceClient`. Fails if not all mandatory fields
+    /// are set.
+    #[cfg(feature = "async")]
+    pub fn build_async_with_metrics<M>(
+        self,
+        handle: &Handle,
+        metrics_collector: M,
+    ) -> InitializationResult<AsyncTokenInfoServiceClient>
+    where
+        M: MetricsCollector + 'static,
+    {
         let parser = if let Some(parser) = self.parser {
             parser
         } else {
@@ -105,12 +120,13 @@ where
             return Err(InitializationError("No endpoint.".into()));
         };
 
-        AsyncTokenInfoServiceClient::new::<P>(
+        AsyncTokenInfoServiceClient::with_metrics::<P, M>(
             &endpoint,
             self.query_parameter.as_ref().map(|s| &**s),
             self.fallback_endpoint.as_ref().map(|s| &**s),
             parser,
             handle,
+            metrics_collector,
         )
     }
 
