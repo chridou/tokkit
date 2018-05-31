@@ -19,7 +19,7 @@ impl TokenInfoError {
         match *self.kind() {
             InvalidResponseContent(_) => false,
             UrlError(_) => false,
-            NotAuthenticated(_) => true,
+            NotAuthenticated(_) => false,
             Connection(_) => true,
             Io(_) => true,
             Client(_) => false,
