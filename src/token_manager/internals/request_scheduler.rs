@@ -1,6 +1,6 @@
 use super::*;
-use std::sync::mpsc;
 use std::cmp;
+use std::sync::mpsc;
 
 pub struct RefreshScheduler<'a, T: 'a> {
     rows: &'a [Mutex<TokenRow<T>>],
@@ -150,11 +150,11 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use std::cell::Cell;
     use std::rc::Rc;
-    use std::sync::mpsc;
     use std::sync::atomic::AtomicBool;
-    use super::*;
+    use std::sync::mpsc;
 
     #[derive(Clone)]
     struct TestClock {

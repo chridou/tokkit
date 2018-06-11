@@ -1,6 +1,6 @@
+use std::error::Error;
 use std::fmt;
 use std::str;
-use std::error::Error;
 
 #[derive(Debug, Clone)]
 pub enum AccessTokenProviderError {

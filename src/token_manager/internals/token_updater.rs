@@ -1,7 +1,7 @@
-use std::collections::BTreeMap;
-use std::sync::Mutex;
-use std::sync::mpsc;
 use backoff::{Error as BError, ExponentialBackoff, Operation};
+use std::collections::BTreeMap;
+use std::sync::mpsc;
+use std::sync::Mutex;
 
 use super::*;
 
@@ -242,13 +242,13 @@ fn call_token_service(
 
 #[cfg(test)]
 mod refresh_tests {
-    use std::sync::{Arc, Mutex};
+    use super::*;
     use std::cell::Cell;
     use std::rc::Rc;
-    use std::sync::mpsc;
     use std::sync::atomic::AtomicBool;
+    use std::sync::mpsc;
+    use std::sync::{Arc, Mutex};
     use token_manager::AuthorizationServerResponse;
-    use super::*;
 
     #[derive(Clone)]
     struct TestClock {

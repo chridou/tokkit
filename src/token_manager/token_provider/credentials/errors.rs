@@ -1,5 +1,5 @@
-use std::fmt;
 use std::error::Error;
+use std::fmt;
 
 /// Type alias for the common return type regarding credentials
 pub type CredentialsResult<T> = Result<T, CredentialsError>;

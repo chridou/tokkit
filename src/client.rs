@@ -1,29 +1,29 @@
 //! Different implementations
 
-use std::sync::Arc;
-use std::io::Read;
 use std::env;
+use std::io::Read;
 use std::str;
+use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::{Client, Response, StatusCode, Url, UrlError};
-use failure::ResultExt;
 use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
+use failure::ResultExt;
+use reqwest::{Client, Response, StatusCode, Url, UrlError};
 
-use {AccessToken, InitializationError, InitializationResult, TokenInfo};
 use parsers::*;
+use {AccessToken, InitializationError, InitializationResult, TokenInfo};
 use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult, TokenInfoService};
 
+#[cfg(feature = "async")]
+use async_client::{AsyncTokenInfoServiceClient, StandAloneAsyncTokenInfoServiceClient};
 #[cfg(feature = "metrix")]
 use metrics::metrix::MetrixCollector;
+#[cfg(feature = "async")]
+use metrics::{DevNullMetricsCollector, MetricsCollector};
 #[cfg(feature = "metrix")]
 use metrix::processor::{AggregatesProcessors, ProcessorMount};
 #[cfg(feature = "async")]
-use metrics::{DevNullMetricsCollector, MetricsCollector};
-#[cfg(feature = "async")]
 use tokio_core::reactor::Handle;
-#[cfg(feature = "async")]
-use async_client::AsyncTokenInfoServiceClient;
 
 /// A builder for a `TokenInfoServiceClient`
 ///
@@ -45,8 +45,8 @@ impl<P> TokenInfoServiceClientBuilder<P>
 where
     P: TokenInfoParser + Sync + Send + 'static,
 {
-    /// Create a new `TokenInfoServiceClientBuilder` with the given `TokenInfoParser`
-    /// already set.
+    /// Create a new `TokenInfoServiceClientBuilder` with the given
+    /// `TokenInfoParser` already set.
     pub fn new(parser: P) -> Self {
         let mut builder = Self::default();
         builder.with_parser(parser);
@@ -172,16 +172,88 @@ where
         self.build_async_with_metrics(handle, metrics_collector)
     }
 
-    /// Creates a new `TokenInfoServiceClientBuilder` from environment parameters.
+    /// Build the `TokenInfoServiceClient`. Fails if not all mandatory fields
+    /// are set.
+    #[cfg(feature = "async")]
+    pub fn build_async_standalone(
+        self,
+    ) -> InitializationResult<StandAloneAsyncTokenInfoServiceClient> {
+        self.build_async_standalone_with_metrics(DevNullMetricsCollector)
+    }
+
+    /// Build the `TokenInfoServiceClient`. Fails if not all mandatory fields
+    /// are set.
+    #[cfg(feature = "async")]
+    pub fn build_async_standalone_with_metrics<M>(
+        self,
+        metrics_collector: M,
+    ) -> InitializationResult<StandAloneAsyncTokenInfoServiceClient>
+    where
+        M: MetricsCollector + 'static,
+    {
+        let parser = if let Some(parser) = self.parser {
+            parser
+        } else {
+            return Err(InitializationError("No token info parser.".into()));
+        };
+
+        let endpoint = if let Some(endpoint) = self.endpoint {
+            endpoint
+        } else {
+            return Err(InitializationError("No endpoint.".into()));
+        };
+
+        StandAloneAsyncTokenInfoServiceClient::with_metrics::<P, M>(
+            &endpoint,
+            self.query_parameter.as_ref().map(|s| &**s),
+            self.fallback_endpoint.as_ref().map(|s| &**s),
+            parser,
+            metrics_collector,
+        )
+    }
+
+    /// Build the `TokenInfoServiceClient`. Fails if not all mandatory fields
+    /// are set.
     ///
-    /// The following variables used to identify the field in a token info response:
+    /// If `group_name` is defined a new group with the given
+    /// name will be created. Otherwise the metrics of the
+    /// client will be directly added to `takes_metrics`.
+    #[cfg(all(feature = "async", feature = "metrix"))]
+    pub fn build_async_standalone_with_metrix<M, T>(
+        self,
+        takes_metrics: &mut M,
+        group_name: Option<T>,
+    ) -> InitializationResult<StandAloneAsyncTokenInfoServiceClient>
+    where
+        M: AggregatesProcessors,
+        T: Into<String>,
+    {
+        let metrics_collector = if let Some(group) = group_name {
+            let mut mount = ProcessorMount::new(group);
+            let collector = MetrixCollector::new(&mut mount);
+            takes_metrics.add_processor(mount);
+            collector
+        } else {
+            MetrixCollector::new(takes_metrics)
+        };
+
+        self.build_async_standalone_with_metrics(metrics_collector)
+    }
+
+    /// Creates a new `TokenInfoServiceClientBuilder` from environment
+    /// parameters.
     ///
-    /// * `TOKKIT_TOKEN_INTROSPECTION_ENDPOINT`(mandatory): The endpoint of the service
-    /// * `TOKKIT_TOKEN_INTROSPECTION_QUERY_PARAMETER`(optional): The request parameter
-    /// * `TOKKIT_TOKEN_INTROSPECTION_FALLBACK_ENDPOINT`(optional): A fallback endpoint
+    /// The following variables used to identify the field in a token info
+    /// response:
     ///
-    /// If `TOKKIT_TOKEN_INTROSPECTION_QUERY_PARAMETER` is ommitted the access token
-    /// will be part of the URL.
+    /// * `TOKKIT_TOKEN_INTROSPECTION_ENDPOINT`(mandatory): The endpoint of the
+    /// service * `TOKKIT_TOKEN_INTROSPECTION_QUERY_PARAMETER`(optional):
+    /// The request parameter
+    /// * `TOKKIT_TOKEN_INTROSPECTION_FALLBACK_ENDPOINT`(optional): A fallback
+    /// endpoint
+    ///
+    /// If `TOKKIT_TOKEN_INTROSPECTION_QUERY_PARAMETER` is ommitted the access
+    /// token will be part of the URL.
     pub fn from_env() -> InitializationResult<Self> {
         let endpoint = env::var("TOKKIT_TOKEN_INTROSPECTION_ENDPOINT").map_err(|err| {
             InitializationError(format!("'TOKKIT_TOKEN_INTROSPECTION_ENDPOINT': {}", err))
@@ -227,7 +299,8 @@ impl TokenInfoServiceClientBuilder<PlanBTokenInfoParser> {
         builder
     }
 
-    /// Create a new `TokenInfoServiceClient` with prepared settings from environment variables.
+    /// Create a new `TokenInfoServiceClient` with prepared settings from
+    /// environment variables.
     ///
     /// `TOKKIT_TOKEN_INTROSPECTION_ENDPOINT` and
     /// `TOKKIT_TOKEN_INTROSPECTION_FALLBACK_ENDPOINT` will be used and
@@ -286,8 +359,8 @@ impl<P: TokenInfoParser> Default for TokenInfoServiceClientBuilder<P> {
 ///
 /// Returns the result as a `TokenInfo`.
 ///
-/// The `TokenInfoServiceClient` will do retries on failures and if possible call a
-/// fallback.
+/// The `TokenInfoServiceClient` will do retries on failures and if possible
+/// call a fallback.
 pub struct TokenInfoServiceClient {
     url_prefix: Arc<String>,
     fallback_url_prefix: Option<Arc<String>>,

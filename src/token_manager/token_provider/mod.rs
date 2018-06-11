@@ -1,22 +1,22 @@
 //! Interaction with the authorization server
+use std::env::{self, VarError};
+use std::io::Read;
+use std::result::Result as StdResult;
 use std::str;
 use std::time::Duration;
-use std::result::Result as StdResult;
-use std::io::Read;
-use std::env::{self, VarError};
 
-use reqwest::{Client, Error as RError, Response, StatusCode};
-use reqwest::header;
-use url::form_urlencoded;
 use json;
 use json::*;
+use reqwest::header;
+use reqwest::{Client, Error as RError, Response, StatusCode};
+use url::form_urlencoded;
 
-use super::*;
 use self::credentials::{CredentialsProvider, RequestTokenCredentials};
 pub use self::errors::*;
+use super::*;
 
-mod errors;
 pub mod credentials;
+mod errors;
 
 pub type AccessTokenProviderResult =
     StdResult<AuthorizationServerResponse, AccessTokenProviderError>;
@@ -76,8 +76,9 @@ impl ResourceOwnerPasswordCredentialsGrantProvider {
     ///
     /// Environment variables:
     ///
-    /// * '´TOKKIT_AUTHORIZATION_SERVER_URL´': URL of the endpoint to send the token request to
-    /// * '´TOKKIT_AUTHORIZATION_SERVER_REALM´': An optional Realm passed as a URL parameter
+    /// * '´TOKKIT_AUTHORIZATION_SERVER_URL´': URL of the endpoint to send the
+    /// token request to * '´TOKKIT_AUTHORIZATION_SERVER_REALM´': An
+    /// optional Realm passed as a URL parameter
     pub fn from_env_with_credentials_provider<C>(
         credentials_provider: C,
     ) -> InitializationResult<Self>
@@ -318,10 +319,11 @@ pub struct EnvAccessTokenProvider {
 }
 
 impl EnvAccessTokenProvider {
-    /// Create a new `EnvAccessTokenProvider` that reads a token from the environment variable
-    /// named `env_var_name`.
+    /// Create a new `EnvAccessTokenProvider` that reads a token from the
+    /// environment variable named `env_var_name`.
     ///
-    /// It always has the queried `Scope`s and always expires after `expires_in`.
+    /// It always has the queried `Scope`s and always expires after
+    /// `expires_in`.
     pub fn new<T: Into<String>>(
         env_var_name: T,
         expires_in: Duration,

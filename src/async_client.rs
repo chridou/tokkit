@@ -1,21 +1,20 @@
-use std::time::{Duration, Instant};
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
+use futures::sync::oneshot;
 use futures::*;
-use tokio_core::reactor::Handle;
-
 use hyper;
 use hyper::{Response, StatusCode, Uri};
 use hyper_tls;
-
+use tokio_core::reactor::{Core, Handle};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::RetryIf;
 
-use {AccessToken, InitializationError, InitializationResult, TokenInfo};
-use parsers::*;
-use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 use client::assemble_url_prefix;
 use metrics::{DevNullMetricsCollector, MetricsCollector};
+use parsers::*;
+use {AccessToken, InitializationError, InitializationResult, TokenInfo};
+use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 
 pub type HttpClient = hyper::Client<hyper_tls::HttpsConnector<hyper::client::HttpConnector>>;
 
@@ -170,6 +169,135 @@ impl AsyncTokenInfoService for AsyncTokenInfoServiceClient {
             result
         });
         Box::new(f)
+    }
+}
+
+/// An `AsyncTokenInfoService` that uses it's own reactor
+#[derive(Clone)]
+pub struct StandAloneAsyncTokenInfoServiceClient {
+    inner: AsyncTokenInfoServiceClient,
+    core: Rc<Core>,
+}
+
+impl StandAloneAsyncTokenInfoServiceClient {
+    pub fn new<P>(
+        endpoint: &str,
+        query_parameter: Option<&str>,
+        fallback_endpoint: Option<&str>,
+        parser: P,
+    ) -> InitializationResult<StandAloneAsyncTokenInfoServiceClient>
+    where
+        P: TokenInfoParser + Send + 'static,
+    {
+        let core = Rc::new(Core::new().map_err(|err| {
+            InitializationError(format!("Could not create reactor core: {}", err))
+        })?);
+
+        let inner = AsyncTokenInfoServiceClient::new(
+            endpoint,
+            query_parameter,
+            fallback_endpoint,
+            parser,
+            &core.handle(),
+        )?;
+
+        Ok(StandAloneAsyncTokenInfoServiceClient { inner, core })
+    }
+
+    pub fn with_metrics<P, M>(
+        endpoint: &str,
+        query_parameter: Option<&str>,
+        fallback_endpoint: Option<&str>,
+        parser: P,
+        metrics_collector: M,
+    ) -> InitializationResult<StandAloneAsyncTokenInfoServiceClient>
+    where
+        P: TokenInfoParser + Send + 'static,
+        M: MetricsCollector + 'static,
+    {
+        let core = Rc::new(Core::new().map_err(|err| {
+            InitializationError(format!("Could not create reactor core: {}", err))
+        })?);
+
+        let inner = AsyncTokenInfoServiceClient::with_metrics(
+            endpoint,
+            query_parameter,
+            fallback_endpoint,
+            parser,
+            &core.handle(),
+            metrics_collector,
+        )?;
+
+        Ok(StandAloneAsyncTokenInfoServiceClient { inner, core })
+    }
+}
+
+impl AsyncTokenInfoService for StandAloneAsyncTokenInfoServiceClient {
+    fn introspect(
+        &self,
+        token: &AccessToken,
+    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>> {
+        let (tx, rx) = oneshot::channel();
+
+        let f = self.inner
+            .introspect(&token)
+            .then(|res| match tx.send(res) {
+                Ok(_) => Ok(()),
+                Err(Ok(_)) => {
+                    warn!(
+                        "Failed to send a valid token info because the \
+                         receiving end was already gone."
+                    );
+                    Err(())
+                }
+                Err(Err(err)) => {
+                    error!(
+                        "Failed to send token error result because the \
+                         receiving end was already gone. The error was: {}",
+                        err
+                    );
+                    Err(())
+                }
+            });
+
+        Box::new(rx.then(|res| match res {
+            Ok(token_res) => token_res,
+            Err(_) => Err(TokenInfoErrorKind::Other("The future was cancelled".into()).into()),
+        }))
+    }
+
+    fn introspect_with_retry(
+        &self,
+        token: &AccessToken,
+        budget: Duration,
+    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>> {
+        let (tx, rx) = oneshot::channel();
+
+        let f = self.inner
+            .introspect_with_retry(&token, budget)
+            .then(|res| match tx.send(res) {
+                Ok(_) => Ok(()),
+                Err(Ok(_)) => {
+                    warn!(
+                        "Failed to send a valid token info because the \
+                         receiving end was already gone."
+                    );
+                    Err(())
+                }
+                Err(Err(err)) => {
+                    error!(
+                        "Failed to send token error result because the \
+                         receiving end was already gone. The error was: {}",
+                        err
+                    );
+                    Err(())
+                }
+            });
+
+        Box::new(rx.then(|res| match res {
+            Ok(token_res) => token_res,
+            Err(_) => Err(TokenInfoErrorKind::Other("The future was cancelled".into()).into()),
+        }))
     }
 }
 

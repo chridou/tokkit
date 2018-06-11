@@ -37,11 +37,11 @@ impl MetricsCollector for DevNullMetricsCollector {
 pub mod metrix {
     use std::time::Instant;
 
-    use metrix::TelemetryTransmitterSync;
-    use metrix::TransmitsTelemetryData;
     use metrix::cockpit::*;
     use metrix::instruments::*;
     use metrix::processor::*;
+    use metrix::TelemetryTransmitterSync;
+    use metrix::TransmitsTelemetryData;
 
     #[derive(Clone, PartialEq, Eq)]
     enum MetricsIntrospectionRequest {

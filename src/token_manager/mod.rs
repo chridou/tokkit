@@ -4,20 +4,20 @@
 //! They can later be queried by the identifier configured with
 //! the `ManagedToken`. The identifier can be any type `T` where
 //! `T: Eq + Ord + Send + Sync + Clone + Display + 'static`
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
-use std::thread;
-use std::result::Result as StdResult;
-use std::fmt::Display;
 use std::collections::BTreeMap;
 use std::env;
+use std::fmt::Display;
+use std::result::Result as StdResult;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{Duration, Instant};
 use {AccessToken, Scope};
 
 mod error;
-pub mod token_provider;
 mod internals;
+pub mod token_provider;
 
 pub use self::error::*;
 use self::token_provider::*;
@@ -59,7 +59,8 @@ impl<T: Eq + Send + Clone + Display> ManagedTokenBuilder<T> {
     }
 
     /// Adds `Scope`s from the environment. They are read from
-    /// an environment variable with the given name and must be separated by spaces.
+    /// an environment variable with the given name and must be separated by
+    /// spaces.
     pub fn with_scopes_from_selected_env_var(
         &mut self,
         env_name: &str,
@@ -346,7 +347,8 @@ impl<T: Eq + Ord + Clone + Display> AccessTokenSource<T> {
         }
     }
 
-    /// Creates a new `AccessTokenSource` which is not attached to an `AccessTokenManager`.
+    /// Creates a new `AccessTokenSource` which is not attached to an
+    /// `AccessTokenManager`.
     ///
     /// This means the `AccessTokenSource` is not updated in the background and
     /// should only be used in a testing context or where you know that the
@@ -490,11 +492,13 @@ pub struct FixedAccessTokenSource<T> {
 }
 
 impl<T: Eq + Ord + Clone + Display> FixedAccessTokenSource<T> {
-    /// Creates a new `FixedAccessTokenSource` which is not attached to an `AccessTokenManager`.
+    /// Creates a new `FixedAccessTokenSource` which is not attached to an
+    /// `AccessTokenManager`.
     ///
-    /// This means the `FixedAccessTokenSource` is not updated in the background and
-    /// should only be used in a testing context or where you know that the
-    /// `AccessToken`s do not need to be updated in the background(CLI etc).
+    /// This means the `FixedAccessTokenSource` is not updated in the
+    /// background and should only be used in a testing context or where
+    /// you know that the `AccessToken`s do not need to be updated in the
+    /// background(CLI etc).
     ///
     /// The `refresh` method will not do anything meaningful...
     pub fn new_detached(token_id: T, token: AccessToken) -> FixedAccessTokenSource<T> {
@@ -525,11 +529,13 @@ pub struct FixedAccessTokenSourceSync<T> {
 }
 
 impl<T: Eq + Ord + Clone + Display> FixedAccessTokenSourceSync<T> {
-    /// Creates a new `FixedAccessTokenSource` which is not attached to an `AccessTokenManager`.
+    /// Creates a new `FixedAccessTokenSource` which is not attached to an
+    /// `AccessTokenManager`.
     ///
-    /// This means the `FixedAccessTokenSource` is not updated in the background and
-    /// should only be used in a testing context or where you know that the
-    /// `AccessToken`s do not need to be updated in the background(CLI etc).
+    /// This means the `FixedAccessTokenSource` is not updated in the
+    /// background and should only be used in a testing context or where
+    /// you know that the `AccessToken`s do not need to be updated in the
+    /// background(CLI etc).
     ///
     /// The `refresh` method will not do anything meaningful...
     pub fn new_detached(token_id: T, token: AccessToken) -> FixedAccessTokenSourceSync<T> {

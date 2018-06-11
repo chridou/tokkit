@@ -1,7 +1,7 @@
+use std::env::{self, VarError};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::PathBuf;
-use std::env::{self, VarError};
 use std::result::Result as StdResult;
 
 use {InitializationError, InitializationResult};
@@ -181,21 +181,22 @@ impl SplitFileCredentialsProvider {
         )
     }
 
-    /// Configures from environment variables while the `ResourceOwnerCredentialsParser`
-    /// can be explicitly set.
+    /// Configures from environment variables while the
+    /// `ResourceOwnerCredentialsParser` can be explicitly set.
     ///
-    /// * '`TOKKIT_CREDENTIALS_DIR`': The first place to look for the path to the credentials
-    /// files.
+    /// * '`TOKKIT_CREDENTIALS_DIR`': The first place to look for the path to
+    /// the credentials files.
     /// * '`CREDENTIALS_DIR`': The fallback for '`TOKKIT_CREDENTIALS_DIR`'
-    /// * '`TOKKIT_CREDENTIALS_RESOURCE_OWNER_FILENAME`' : The file name for the resource owner
+    /// * '`TOKKIT_CREDENTIALS_RESOURCE_OWNER_FILENAME`' : The file name for
+    /// the resource owner credentials
+    /// * '`TOKKIT_CREDENTIALS_CLIENT_FILENAME`' : The file name for the client
     /// credentials
-    /// * '`TOKKIT_CREDENTIALS_CLIENT_FILENAME`' : The file name for the client credentials
     ///
-    /// Either '`TOKKIT_CREDENTIALS_DIR`' or '`CREDENTIALS_DIR`' must be set where
-    /// '`TOKKIT_CREDENTIALS_DIR`' takes preceedence.
+    /// Either '`TOKKIT_CREDENTIALS_DIR`' or '`CREDENTIALS_DIR`' must be set
+    /// where '`TOKKIT_CREDENTIALS_DIR`' takes preceedence.
     /// '`TOKKIT_CREDENTIALS_RESOURCE_OWNER_FILENAME`'
-    /// defaults to `user.json` while '`TOKKIT_CREDENTIALS_CLIENT_FILENAME`' defaults to
-    /// `client.json`.
+    /// defaults to `user.json` while '`TOKKIT_CREDENTIALS_CLIENT_FILENAME`'
+    /// defaults to `client.json`.
     pub fn with_default_client_parser_from_env<P>(
         owner_credentials_parser: P,
     ) -> InitializationResult<Self>
@@ -244,18 +245,19 @@ impl SplitFileCredentialsProvider {
 
     /// Configures the instance from environment variables.
     ///
-    /// * '`TOKKIT_CREDENTIALS_DIR`': The first place to look for the path to the credentials
-    /// files.
+    /// * '`TOKKIT_CREDENTIALS_DIR`': The first place to look for the path to
+    /// the credentials files.
     /// * '`CREDENTIALS_DIR`': The fallback for '`TOKKIT_CREDENTIALS_DIR`'
-    /// * '`TOKKIT_CREDENTIALS_RESOURCE_OWNER_FILENAME`' : The file name for the resource owner
+    /// * '`TOKKIT_CREDENTIALS_RESOURCE_OWNER_FILENAME`' : The file name for
+    /// the resource owner credentials
+    /// * '`TOKKIT_CREDENTIALS_CLIENT_FILENAME`' : The file name for the client
     /// credentials
-    /// * '`TOKKIT_CREDENTIALS_CLIENT_FILENAME`' : The file name for the client credentials
     ///
-    /// Either '`TOKKIT_CREDENTIALS_DIR`' or '`CREDENTIALS_DIR`' must be set where
-    /// '`TOKKIT_CREDENTIALS_DIR`' takes preceedence.
+    /// Either '`TOKKIT_CREDENTIALS_DIR`' or '`CREDENTIALS_DIR`' must be set
+    /// where '`TOKKIT_CREDENTIALS_DIR`' takes preceedence.
     /// '`TOKKIT_CREDENTIALS_RESOURCE_OWNER_FILENAME`'
-    /// defaults to `user.json` while '`TOKKIT_CREDENTIALS_CLIENT_FILENAME`' defaults to
-    /// `client.json`.
+    /// defaults to `user.json` while '`TOKKIT_CREDENTIALS_CLIENT_FILENAME`'
+    /// defaults to `client.json`.
     pub fn with_default_parsers_from_env() -> InitializationResult<Self> {
         SplitFileCredentialsProvider::with_default_client_parser_from_env(
             DefaultResourceOwnerCredentialsParser,

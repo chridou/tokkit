@@ -1,6 +1,6 @@
 //! Various parsers for the responses of a token info service.
-use std::str;
 use std::env;
+use std::str;
 
 use failure::*;
 
@@ -19,8 +19,9 @@ pub struct CustomTokenInfoParser {
     /// and set to `true` in the `TokenInfo` right away.
     /// The reason is that this is a mandatory field in the `TokenInfo`
     /// and that we assume that if a token introspection service does
-    /// not provide this field it would return an error in the introspection request
-    /// in case the token is not active at the time the request was made.
+    /// not provide this field it would return an error in the introspection
+    /// request in case the token is not active at the time the request was
+    /// made.
     pub active_field: Option<String>,
     /// The field name in the JSON that identifies the `user_id` field
     /// for the `TokenInfo`. If None the field will not be looked up
@@ -59,13 +60,15 @@ impl CustomTokenInfoParser {
 
     /// Create a new parser from environment variables.
     ///
-    /// The following variables used to identify the field in a token info response:
+    /// The following variables used to identify the field in a token info
+    /// response:
     ///
-    /// * `TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD`(optional): The field name for the user id
-    /// * `TOKKIT_TOKEN_INFO_PARSER_SCOPE_FIELD`(optional): The field name for scopes
-    /// * `TOKKIT_TOKEN_INFO_PARSER_EXPIRES_IN_FIELD`(optional): The field name for the
-    /// * `TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD`(optional): The field name for the
-    /// active field
+    /// * `TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD`(optional): The field name
+    /// for the user id * `TOKKIT_TOKEN_INFO_PARSER_SCOPE_FIELD`(optional):
+    /// The field name for scopes
+    /// * `TOKKIT_TOKEN_INFO_PARSER_EXPIRES_IN_FIELD`(optional): The field name
+    /// for the * `TOKKIT_TOKEN_INFO_PARSER_ACTIVE_FIELD`(optional): The
+    /// field name for the active field
     pub fn from_env() -> Result<CustomTokenInfoParser, Error> {
         let user_id_field: Option<String> = match env::var("TOKKIT_TOKEN_INFO_PARSER_USER_ID_FIELD")
         {
@@ -117,8 +120,8 @@ impl TokenInfoParser for CustomTokenInfoParser {
 /// ##Example
 ///
 /// ```rust
-/// use tokkit::*;
 /// use tokkit::parsers::{PlanBTokenInfoParser, TokenInfoParser};
+/// use tokkit::*;
 ///
 /// let sample = br#"
 /// {
@@ -160,8 +163,8 @@ impl TokenInfoParser for PlanBTokenInfoParser {
 /// ##Example
 ///
 /// ```rust
-/// use tokkit::*;
 /// use tokkit::parsers::{GoogleV3TokenInfoParser, TokenInfoParser};
+/// use tokkit::*;
 ///
 /// let sample = br#"
 /// {
@@ -172,12 +175,12 @@ impl TokenInfoParser for PlanBTokenInfoParser {
 /// }
 /// "#;
 ///
-/// let expected = TokenInfo {
-///     active: true,
-///     user_id: Some(UserId::new("123456789")),
-///     scope: vec![
-///         Scope::new("https://www.googleapis.com/auth/drive.metadata.readonly"),
-///     ],
+///     let expected = TokenInfo {
+///         active: true,
+///         user_id: Some(UserId::new("123456789")),
+///         scope: vec![Scope::new(
+///             "https://www.googleapis.com/auth/drive.metadata.readonly",
+///     )],
 ///     expires_in_seconds: Some(436),
 /// };
 ///
@@ -209,8 +212,8 @@ impl TokenInfoParser for GoogleV3TokenInfoParser {
 /// ##Example
 ///
 /// ```rust
-/// use tokkit::*;
 /// use tokkit::parsers::{AmazonTokenInfoParser, TokenInfoParser};
+/// use tokkit::*;
 ///
 /// let sample = br#"
 /// {
@@ -223,16 +226,16 @@ impl TokenInfoParser for GoogleV3TokenInfoParser {
 /// }
 /// "#;
 ///
-/// let expected = TokenInfo {
-///     active: true,
-///     user_id: Some(UserId::new("amznl.account.K2LI23KL2LK2")),
-///     scope: Vec::new(),
-///     expires_in_seconds: Some(3597),
-/// };
+///     let expected = TokenInfo {
+///         active: true,
+///         user_id: Some(UserId::new("amznl.account.K2LI23KL2LK2")),
+///         scope: Vec::new(),
+///         expires_in_seconds: Some(3597),
+///     };
 ///
-/// let token_info = AmazonTokenInfoParser.parse(sample).unwrap();
+///     let token_info = AmazonTokenInfoParser.parse(sample).unwrap();
 ///
-/// assert_eq!(expected, token_info);
+///     assert_eq!(expected, token_info);
 /// ```
 pub struct AmazonTokenInfoParser;
 
