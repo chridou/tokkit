@@ -189,7 +189,7 @@ where
         metrics_collector: M,
     ) -> InitializationResult<StandAloneAsyncTokenInfoServiceClient>
     where
-        M: MetricsCollector + 'static,
+        M: MetricsCollector + Send + 'static,
     {
         let parser = if let Some(parser) = self.parser {
             parser
