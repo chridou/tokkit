@@ -1,7 +1,7 @@
 //! Parser for credentials, mostl likely JSON
-use std::str;
 use json;
 use json::*;
+use std::str;
 
 use super::*;
 
@@ -51,7 +51,8 @@ impl ResourceOwnerCredentialsParser for DefaultResourceOwnerCredentialsParser {
     }
 }
 
-/// A parser `ResourceOwnerCredentials`where the resource owner is an application.
+/// A parser `ResourceOwnerCredentials`where the resource owner is an
+/// application.
 ///
 /// It parses the following JSON:
 ///

@@ -21,7 +21,6 @@ url = "1.6.0"
 hyper = { version = "0.12", optional = true}
 tokio-retry = { version = "0.2", optional = true}
 futures = { version = "0.1", optional = true }
-tokio-core = {version = "0.1", optional = true }
 hyper-tls = { version = "0.2", optional = true }
 http = { version = "0.1", optional = true }
 metrix = { version = "0.7", optional = true }
@@ -30,4 +29,4 @@ metrix = { version = "0.7", optional = true }
 env_logger = "0.4.0"
 
 [features]
-async = ["hyper", "tokio-retry", "futures", "tokio-core", "hyper-tls", "http"]
+async = ["hyper", "tokio-retry", "futures", "hyper-tls", "http"]

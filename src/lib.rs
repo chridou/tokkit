@@ -3,12 +3,9 @@
 //! [![crates.io](https://img.shields.io/crates/v/tokkit.svg)](https://crates.io/crates/tokkit)
 //! [![docs.rs](https://docs.rs/tokkit/badge.svg)](https://docs.rs/tokkit)
 //! [![downloads](https://img.shields.io/crates/d/tokkit.svg)](https://crates.io/crates/tokkit)
-//! [![build Status](https://travis-ci.org/chridou/tokkit.svg?branch=master)](https://travis-ci.
-//! org/chridou/tokkit)
-//! [![license-mit](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.
-//! com/chridou/tokkit/blob/master/LICENSE-MIT)
-//! [![license-apache](http://img.shields.io/badge/license-APACHE-blue.svg)](https://github.
-//! com/chridou/tokkit/blob/master/LICENSE-APACHE)
+//! [![build Status](https://travis-ci.org/chridou/tokkit.svg?branch=master)](https://travis-ci.org/chridou/tokkit)
+//! [![license-mit](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/chridou/tokkit/blob/master/LICENSE-MIT)
+//! [![license-apache](http://img.shields.io/badge/license-APACHE-blue.svg)](https://github.com/chridou/tokkit/blob/master/LICENSE-APACHE)
 //!
 //! `tokkit` is a simple(even simplistic) **tok**en tool**kit** for OAUTH2 token
 //! introspection
@@ -49,6 +46,8 @@
 //!
 //! ## Recent changes
 //!
+//! * 0.9.0
+//!    * Use hyper 0.12
 //! * 0.8.4
 //!    * Added support for [metrix](https://crates.io/crates/metrix)
 //! * 0.8.3
@@ -89,8 +88,6 @@ extern crate hyper;
 extern crate hyper_tls;
 #[cfg(feature = "metrix")]
 extern crate metrix;
-#[cfg(feature = "async")]
-extern crate tokio_core;
 #[cfg(feature = "async")]
 extern crate tokio_retry;
 

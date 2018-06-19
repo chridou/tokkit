@@ -1,11 +1,11 @@
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use futures::future::Executor;
 use futures::*;
 use hyper::client::HttpConnector;
 use hyper::{Body, Client, Response, StatusCode, Uri};
 use hyper_tls::HttpsConnector;
-use tokio_core::reactor::Handle;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::RetryIf;
 
@@ -47,36 +47,38 @@ pub struct AsyncTokenInfoServiceClient {
 }
 
 impl AsyncTokenInfoServiceClient {
-    pub fn new<P>(
+    pub fn new<P, E>(
         endpoint: &str,
         query_parameter: Option<&str>,
         fallback_endpoint: Option<&str>,
         parser: P,
-        handle: &Handle,
+        executor: E,
     ) -> InitializationResult<AsyncTokenInfoServiceClient>
     where
         P: TokenInfoParser + Send + 'static,
+        E: Executor<Box<Future<Item = (), Error = ()> + Send>> + Send + Sync + 'static,
     {
         AsyncTokenInfoServiceClient::with_metrics(
             endpoint,
             query_parameter,
             fallback_endpoint,
             parser,
-            handle,
+            executor,
             DevNullMetricsCollector,
         )
     }
 
-    pub fn with_metrics<P, M>(
+    pub fn with_metrics<P, E, M>(
         endpoint: &str,
         query_parameter: Option<&str>,
         fallback_endpoint: Option<&str>,
         parser: P,
-        handle: &Handle,
+        executor: E,
         metrics_collector: M,
     ) -> InitializationResult<AsyncTokenInfoServiceClient>
     where
         P: TokenInfoParser + Send + 'static,
+        E: Executor<Box<Future<Item = (), Error = ()> + Send>> + Send + Sync + 'static,
         M: MetricsCollector + 'static,
     {
         let url_prefix = assemble_url_prefix(endpoint, &query_parameter)
@@ -91,10 +93,10 @@ impl AsyncTokenInfoServiceClient {
             None
         };
 
-        let builder = ::hyper::Client::builder();
-
         let https = HttpsConnector::new(4)?;
-        let http_client = builder.build::<_, Body>(https);
+        let http_client = ::hyper::Client::builder()
+            .executor(executor)
+            .build::<_, Body>(https);
 
         let http_client = Rc::new(http_client);
 

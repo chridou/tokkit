@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 
 mod request_scheduler;
 mod token_updater;
 
-use token_manager::token_provider::AccessTokenProvider;
 use super::*;
+use token_manager::token_provider::AccessTokenProvider;
 
 pub type EpochMillis = u64;
 
