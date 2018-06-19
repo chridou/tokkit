@@ -1,23 +1,21 @@
-use std::time::{Duration, Instant};
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use futures::*;
+use hyper::client::HttpConnector;
+use hyper::{Body, Client, Response, StatusCode, Uri};
+use hyper_tls::HttpsConnector;
 use tokio_core::reactor::Handle;
-
-use hyper;
-use hyper::{Response, StatusCode, Uri};
-use hyper_tls;
-
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::RetryIf;
 
-use {AccessToken, InitializationError, InitializationResult, TokenInfo};
-use parsers::*;
-use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 use client::assemble_url_prefix;
 use metrics::{DevNullMetricsCollector, MetricsCollector};
+use parsers::*;
+use {AccessToken, InitializationError, InitializationResult, TokenInfo};
+use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 
-pub type HttpClient = hyper::Client<hyper_tls::HttpsConnector<hyper::client::HttpConnector>>;
+pub type HttpClient = Client<HttpsConnector<HttpConnector>, Body>;
 
 /// Gives a `TokenInfo` for an `AccessToken`.
 ///
@@ -93,9 +91,10 @@ impl AsyncTokenInfoServiceClient {
             None
         };
 
-        let http_client = ::hyper::Client::configure()
-            .connector(::hyper_tls::HttpsConnector::new(4, handle)?)
-            .build(handle);
+        let builder = ::hyper::Client::builder();
+
+        let https = HttpsConnector::new(4)?;
+        let http_client = builder.build::<_, Body>(https);
 
         let http_client = Rc::new(http_client);
 
@@ -174,20 +173,20 @@ impl AsyncTokenInfoService for AsyncTokenInfoServiceClient {
 }
 
 fn process_response(
-    response: Response,
+    response: Response<Body>,
     parser: Rc<TokenInfoParser + 'static>,
 ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>> {
     let status = response.status();
     let f = response
-        .body()
-        .concat2()
+        .into_body()
         .map_err(|err| TokenInfoErrorKind::Io(format!("Could not get body chunks: {}", err)))
-        .and_then(move |body_chunk| {
-            if status == StatusCode::Ok {
-                let result = match parser.parse(&body_chunk) {
+        .concat2()
+        .and_then(move |body| {
+            if status == StatusCode::OK {
+                let result = match parser.parse(&body) {
                     Ok(info) => Ok(info),
                     Err(err) => {
-                        let msg: String = String::from_utf8_lossy(&body_chunk).into();
+                        let msg: String = String::from_utf8_lossy(&body).into();
                         Err(TokenInfoErrorKind::InvalidResponseContent(format!(
                             "{}: {}",
                             err, msg
@@ -195,20 +194,20 @@ fn process_response(
                     }
                 };
                 result
-            } else if status == StatusCode::Unauthorized {
-                let msg = String::from_utf8_lossy(&body_chunk);
+            } else if status == StatusCode::UNAUTHORIZED {
+                let msg = String::from_utf8_lossy(&body);
                 Err(TokenInfoErrorKind::NotAuthenticated(format!(
                     "The server refused the token: {}",
                     msg
                 )))
             } else if status.is_client_error() {
-                let msg = String::from_utf8_lossy(&body_chunk).into();
+                let msg = String::from_utf8_lossy(&body).into();
                 Err(TokenInfoErrorKind::Client(msg))
             } else if status.is_server_error() {
-                let msg = String::from_utf8_lossy(&body_chunk).into();
+                let msg = String::from_utf8_lossy(&body).into();
                 Err(TokenInfoErrorKind::Server(msg))
             } else {
-                let msg = String::from_utf8_lossy(&body_chunk).into();
+                let msg = String::from_utf8_lossy(&body).into();
                 Err(TokenInfoErrorKind::Other(msg))
             }
         })
@@ -310,38 +309,20 @@ fn complete_url(url_prefix: &str, token: &AccessToken) -> TokenInfoResult<Uri> {
     Ok(url)
 }
 
-impl From<hyper_tls::Error> for InitializationError {
-    fn from(err: hyper_tls::Error) -> Self {
+impl From<::hyper_tls::Error> for InitializationError {
+    fn from(err: ::hyper_tls::Error) -> Self {
         InitializationError(format!("Could not initialize hyper_tls: {}", err))
     }
 }
 
-impl From<hyper::error::UriError> for TokenInfoError {
-    fn from(err: hyper::error::UriError) -> Self {
-        TokenInfoErrorKind::UrlError(err.to_string()).into()
+impl From<::hyper::error::Error> for TokenInfoError {
+    fn from(err: ::hyper::error::Error) -> Self {
+        TokenInfoErrorKind::Other(err.to_string()).into()
     }
 }
 
-impl From<hyper::error::Error> for TokenInfoError {
-    fn from(err: hyper::error::Error) -> Self {
-        use hyper::error::Error::*;
-        match err {
-            Method => TokenInfoErrorKind::Other(err.to_string()).into(),
-            Uri(err) => TokenInfoErrorKind::UrlError(err.to_string()).into(),
-            Version => TokenInfoErrorKind::Other(err.to_string()).into(),
-            Header => TokenInfoErrorKind::Other(err.to_string()).into(),
-            TooLarge => TokenInfoErrorKind::Other(err.to_string()).into(),
-            Incomplete => TokenInfoErrorKind::Other(err.to_string()).into(),
-            Status => TokenInfoErrorKind::Other(err.to_string()).into(),
-            Timeout => TokenInfoErrorKind::Server(err.to_string()).into(),
-            Upgrade => TokenInfoErrorKind::Other(err.to_string()).into(),
-            Cancel(err @ hyper::error::Canceled { .. }) => {
-                TokenInfoErrorKind::Io(err.to_string()).into()
-            }
-            Closed => TokenInfoErrorKind::Io(err.to_string()).into(),
-            Io(err) => TokenInfoErrorKind::Io(err.to_string()).into(),
-            Utf8(err) => TokenInfoErrorKind::Io(err.to_string()).into(),
-            err => TokenInfoErrorKind::Other(err.to_string()).into(),
-        }
+impl From<::http::uri::InvalidUri> for TokenInfoError {
+    fn from(err: ::http::uri::InvalidUri) -> Self {
+        TokenInfoErrorKind::UrlError(err.to_string()).into()
     }
 }

@@ -31,11 +31,12 @@
 //!
 //! ### Verify Access Tokens
 //!
-//! `tokkit` contains a module `token_info` for protected resources to verify access tokens.
+//! `tokkit` contains a module `token_info` for protected resources to verify
+//! access tokens.
 //!
 //! ```rust,no_run
-//! use tokkit::*;
 //! use tokkit::client::*;
+//! use tokkit::*;
 //!
 //! let builder = TokenInfoServiceClientBuilder::google_v3();
 //!
@@ -81,6 +82,8 @@ extern crate url;
 #[cfg(feature = "async")]
 extern crate futures;
 #[cfg(feature = "async")]
+extern crate http;
+#[cfg(feature = "async")]
 extern crate hyper;
 #[cfg(feature = "async")]
 extern crate hyper_tls;
@@ -93,13 +96,13 @@ extern crate tokio_retry;
 
 use std::fmt;
 
-mod error;
-pub mod token_manager;
-pub mod parsers;
-pub mod client;
 #[cfg(feature = "async")]
 pub mod async_client;
+pub mod client;
+mod error;
 pub mod metrics;
+pub mod parsers;
+pub mod token_manager;
 
 pub use error::{TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 
