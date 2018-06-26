@@ -45,6 +45,8 @@ let tokeninfo = service.introspect(&token).unwrap();
 
 ## Recent changes
 
+* 0.10.2
+   * Fixed async API
 * 0.10.1
    * Made futures `Send` + `'static`
 * 0.10.0

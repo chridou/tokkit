@@ -13,6 +13,7 @@ pub trait TokenInfoParser: Send + 'static {
 
 /// A configurable `TokenInfoParser` that parses a `TokenInfo` from JSON
 /// returned by a token introspection service.
+#[derive(Clone)]
 pub struct CustomTokenInfoParser {
     /// The field name in the JSON that identifies the `active` field
     /// for the `TokenInfo`. If None the field will not be looked up
@@ -148,6 +149,7 @@ impl TokenInfoParser for CustomTokenInfoParser {
 ///
 /// assert_eq!(expected, token_info);
 /// ```
+#[derive(Clone)]
 pub struct PlanBTokenInfoParser;
 
 impl TokenInfoParser for PlanBTokenInfoParser {
@@ -190,6 +192,7 @@ impl TokenInfoParser for PlanBTokenInfoParser {
 /// ```
 ///
 ///
+#[derive(Clone)]
 pub struct GoogleV3TokenInfoParser;
 
 impl TokenInfoParser for GoogleV3TokenInfoParser {
@@ -237,6 +240,7 @@ impl TokenInfoParser for GoogleV3TokenInfoParser {
 ///
 ///     assert_eq!(expected, token_info);
 /// ```
+#[derive(Clone)]
 pub struct AmazonTokenInfoParser;
 
 impl TokenInfoParser for AmazonTokenInfoParser {

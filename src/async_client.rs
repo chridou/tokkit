@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures::*;
@@ -38,11 +38,11 @@ pub trait AsyncTokenInfoService {
 
 #[derive(Clone)]
 pub struct AsyncTokenInfoServiceClient {
-    url_prefix: Rc<String>,
-    fallback_url_prefix: Option<Rc<String>>,
-    http_client: Rc<HttpClient>,
-    parser: Rc<TokenInfoParser + Send + 'static>,
-    metrics_collector: Rc<MetricsCollector + 'static>,
+    url_prefix: Arc<String>,
+    fallback_url_prefix: Option<Arc<String>>,
+    http_client: Arc<HttpClient>,
+    parser: Arc<TokenInfoParser + Send + Sync + 'static>,
+    metrics_collector: Arc<MetricsCollector + Send + Sync + 'static>,
 }
 
 impl AsyncTokenInfoServiceClient {
@@ -53,7 +53,7 @@ impl AsyncTokenInfoServiceClient {
         parser: P,
     ) -> InitializationResult<AsyncTokenInfoServiceClient>
     where
-        P: TokenInfoParser + Send + 'static,
+        P: TokenInfoParser + Send + Sync + 'static,
     {
         AsyncTokenInfoServiceClient::with_metrics(
             endpoint,
@@ -72,8 +72,8 @@ impl AsyncTokenInfoServiceClient {
         metrics_collector: M,
     ) -> InitializationResult<AsyncTokenInfoServiceClient>
     where
-        P: TokenInfoParser + Send + 'static,
-        M: MetricsCollector + 'static,
+        P: TokenInfoParser + Send + Sync + 'static,
+        M: MetricsCollector + Send + Sync + 'static,
     {
         let url_prefix = assemble_url_prefix(endpoint, &query_parameter)
             .map_err(|err| InitializationError(err))?;
@@ -90,13 +90,13 @@ impl AsyncTokenInfoServiceClient {
         let https = HttpsConnector::new(4)?;
         let http_client = ::hyper::Client::builder().build::<_, Body>(https);
 
-        let http_client = Rc::new(http_client);
+        let http_client = Arc::new(http_client);
 
         Ok(AsyncTokenInfoServiceClient {
-            url_prefix: Rc::new(url_prefix),
-            fallback_url_prefix: fallback_url_prefix.map(|fb| Rc::new(fb)),
-            parser: Rc::new(parser),
-            metrics_collector: Rc::new(metrics_collector),
+            url_prefix: Arc::new(url_prefix),
+            fallback_url_prefix: fallback_url_prefix.map(|fb| Arc::new(fb)),
+            parser: Arc::new(parser),
+            metrics_collector: Arc::new(metrics_collector),
             http_client,
         })
     }
@@ -168,7 +168,7 @@ impl AsyncTokenInfoService for AsyncTokenInfoServiceClient {
 
 fn process_response(
     response: Response<Body>,
-    parser: Rc<TokenInfoParser + 'static>,
+    parser: Arc<TokenInfoParser + Send + Sync + 'static>,
 ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static> {
     let status = response.status();
     let f = response
@@ -211,12 +211,12 @@ fn process_response(
 }
 
 fn execute_with_retry(
-    http_client: Rc<HttpClient>,
+    http_client: Arc<HttpClient>,
     token: AccessToken,
     url_prefix: &str,
-    parser: Rc<TokenInfoParser + 'static>,
+    parser: Arc<TokenInfoParser + Send + Sync + 'static>,
     budget: Duration,
-    metrics_collector: Rc<MetricsCollector>,
+    metrics_collector: Arc<MetricsCollector + Send + Sync + 'static>,
 ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static> {
     if budget == Duration::from_secs(0) {
         return Box::new(future::err(
@@ -270,11 +270,11 @@ fn execute_with_retry(
 }
 
 fn execute_once(
-    client: Rc<HttpClient>,
+    client: Arc<HttpClient>,
     token: AccessToken,
     url_prefix: &str,
-    parser: Rc<TokenInfoParser + 'static>,
-    metrics_collector: Rc<MetricsCollector>,
+    parser: Arc<TokenInfoParser + Send + Sync + 'static>,
+    metrics_collector: Arc<MetricsCollector + Send + Sync + 'static>,
 ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static> {
     let start = Instant::now();
     let f = future::result(complete_url(url_prefix, &token))
