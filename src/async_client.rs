@@ -24,7 +24,7 @@ pub trait AsyncTokenInfoService {
     fn introspect(
         &self,
         token: &AccessToken,
-    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>>;
+    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static>;
     /// Gives a `TokenInfo` for an `AccessToken` with retries.
     ///
     /// `budget` defines the duration the retries may take
@@ -33,7 +33,7 @@ pub trait AsyncTokenInfoService {
         &self,
         token: &AccessToken,
         budget: Duration,
-    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>>;
+    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static>;
 }
 
 #[derive(Clone)]
@@ -106,7 +106,7 @@ impl AsyncTokenInfoService for AsyncTokenInfoServiceClient {
     fn introspect(
         &self,
         token: &AccessToken,
-    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>> {
+    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static> {
         let start = Instant::now();
         self.metrics_collector.incoming_introspection_request();
 
@@ -137,7 +137,7 @@ impl AsyncTokenInfoService for AsyncTokenInfoServiceClient {
         &self,
         token: &AccessToken,
         budget: Duration,
-    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>> {
+    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static> {
         let start = Instant::now();
         self.metrics_collector.incoming_introspection_request();
 
@@ -169,7 +169,7 @@ impl AsyncTokenInfoService for AsyncTokenInfoServiceClient {
 fn process_response(
     response: Response<Body>,
     parser: Rc<TokenInfoParser + 'static>,
-) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>> {
+) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static> {
     let status = response.status();
     let f = response
         .into_body()
@@ -217,7 +217,7 @@ fn execute_with_retry(
     parser: Rc<TokenInfoParser + 'static>,
     budget: Duration,
     metrics_collector: Rc<MetricsCollector>,
-) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>> {
+) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static> {
     if budget == Duration::from_secs(0) {
         return Box::new(future::err(
             TokenInfoErrorKind::Other("Initial reuest budget was 0".into()).into(),
@@ -275,7 +275,7 @@ fn execute_once(
     url_prefix: &str,
     parser: Rc<TokenInfoParser + 'static>,
     metrics_collector: Rc<MetricsCollector>,
-) -> Box<Future<Item = TokenInfo, Error = TokenInfoError>> {
+) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static> {
     let start = Instant::now();
     let f = future::result(complete_url(url_prefix, &token))
         .and_then(move |uri| client.get(uri).map_err(Into::into))

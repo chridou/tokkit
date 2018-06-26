@@ -45,6 +45,8 @@ let tokeninfo = service.introspect(&token).unwrap();
 
 ## Recent changes
 
+* 0.10.1
+   * Made futures `Send` + `'static`
 * 0.10.0
    * Remove executor and use hyper runtime
 * 0.9.0
