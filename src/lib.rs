@@ -46,16 +46,10 @@
 //!
 //! ## Recent changes
 //!
+//! * 0.10.0
+//!    * Remove executor and use hyper runtime
 //! * 0.9.0
 //!    * Use hyper 0.12
-//! * 0.8.4
-//!    * Added support for [metrix](https://crates.io/crates/metrix)
-//! * 0.8.3
-//!    * Added metrics
-//! * 0.8.2
-//!    * Added retries for async client
-//! * 0.8.1
-//!    * Added experimental support for async client.
 //!
 //! ## License
 //!

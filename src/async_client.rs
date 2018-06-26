@@ -1,7 +1,6 @@
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use futures::future::Executor;
 use futures::*;
 use hyper::client::HttpConnector;
 use hyper::{Body, Client, Response, StatusCode, Uri};
@@ -47,38 +46,33 @@ pub struct AsyncTokenInfoServiceClient {
 }
 
 impl AsyncTokenInfoServiceClient {
-    pub fn new<P, E>(
+    pub fn new<P>(
         endpoint: &str,
         query_parameter: Option<&str>,
         fallback_endpoint: Option<&str>,
         parser: P,
-        executor: E,
     ) -> InitializationResult<AsyncTokenInfoServiceClient>
     where
         P: TokenInfoParser + Send + 'static,
-        E: Executor<Box<Future<Item = (), Error = ()> + Send>> + Send + Sync + 'static,
     {
         AsyncTokenInfoServiceClient::with_metrics(
             endpoint,
             query_parameter,
             fallback_endpoint,
             parser,
-            executor,
             DevNullMetricsCollector,
         )
     }
 
-    pub fn with_metrics<P, E, M>(
+    pub fn with_metrics<P, M>(
         endpoint: &str,
         query_parameter: Option<&str>,
         fallback_endpoint: Option<&str>,
         parser: P,
-        executor: E,
         metrics_collector: M,
     ) -> InitializationResult<AsyncTokenInfoServiceClient>
     where
         P: TokenInfoParser + Send + 'static,
-        E: Executor<Box<Future<Item = (), Error = ()> + Send>> + Send + Sync + 'static,
         M: MetricsCollector + 'static,
     {
         let url_prefix = assemble_url_prefix(endpoint, &query_parameter)
@@ -94,9 +88,7 @@ impl AsyncTokenInfoServiceClient {
         };
 
         let https = HttpsConnector::new(4)?;
-        let http_client = ::hyper::Client::builder()
-            .executor(executor)
-            .build::<_, Body>(https);
+        let http_client = ::hyper::Client::builder().build::<_, Body>(https);
 
         let http_client = Rc::new(http_client);
 

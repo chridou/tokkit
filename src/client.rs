@@ -16,8 +16,6 @@ use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult, TokenInfoService};
 
 #[cfg(feature = "async")]
 use async_client::AsyncTokenInfoServiceClient;
-#[cfg(feature = "async")]
-use futures::future::{Executor, Future};
 #[cfg(feature = "metrix")]
 use metrics::metrix::MetrixCollector;
 #[cfg(feature = "async")]
@@ -106,23 +104,18 @@ where
     /// Build the `TokenInfoServiceClient`. Fails if not all mandatory fields
     /// are set.
     #[cfg(feature = "async")]
-    pub fn build_async<E>(self, executor: E) -> InitializationResult<AsyncTokenInfoServiceClient>
-    where
-        E: Executor<Box<Future<Item = (), Error = ()> + Send>> + Send + Sync + 'static,
-    {
-        self.build_async_with_metrics(executor, DevNullMetricsCollector)
+    pub fn build_async(self) -> InitializationResult<AsyncTokenInfoServiceClient> {
+        self.build_async_with_metrics(DevNullMetricsCollector)
     }
 
     /// Build the `TokenInfoServiceClient`. Fails if not all mandatory fields
     /// are set.
     #[cfg(feature = "async")]
-    pub fn build_async_with_metrics<E, M>(
+    pub fn build_async_with_metrics<M>(
         self,
-        executor: E,
         metrics_collector: M,
     ) -> InitializationResult<AsyncTokenInfoServiceClient>
     where
-        E: Executor<Box<Future<Item = (), Error = ()> + Send>> + Send + Sync + 'static,
         M: MetricsCollector + 'static,
     {
         let parser = if let Some(parser) = self.parser {
@@ -137,12 +130,11 @@ where
             return Err(InitializationError("No endpoint.".into()));
         };
 
-        AsyncTokenInfoServiceClient::with_metrics::<P, E, M>(
+        AsyncTokenInfoServiceClient::with_metrics::<P, M>(
             &endpoint,
             self.query_parameter.as_ref().map(|s| &**s),
             self.fallback_endpoint.as_ref().map(|s| &**s),
             parser,
-            executor,
             metrics_collector,
         )
     }
@@ -154,14 +146,12 @@ where
     /// name will be created. Otherwise the metrics of the
     /// client will be directly added to `takes_metrics`.
     #[cfg(all(feature = "async", feature = "metrix"))]
-    pub fn build_async_with_metrix<E, M, T>(
+    pub fn build_async_with_metrix<M, T>(
         self,
-        executor: E,
         takes_metrics: &mut M,
         group_name: Option<T>,
     ) -> InitializationResult<AsyncTokenInfoServiceClient>
     where
-        E: Executor<Box<Future<Item = (), Error = ()> + Send>> + Send + Sync + 'static,
         M: AggregatesProcessors,
         T: Into<String>,
     {
@@ -174,7 +164,7 @@ where
             MetrixCollector::new(takes_metrics)
         };
 
-        self.build_async_with_metrics(executor, metrics_collector)
+        self.build_async_with_metrics(metrics_collector)
     }
 
     /// Creates a new `TokenInfoServiceClientBuilder` from environment
