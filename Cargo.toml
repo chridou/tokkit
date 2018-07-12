@@ -1,6 +1,6 @@
 [package]
 name = "tokkit"
-version = "0.10.2"
+version = "0.10.3"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 license = "Apache-2.0/MIT"
 description = "A simple(simplistic) OAUTH toolkit."
@@ -21,7 +21,7 @@ url = "1.6.0"
 hyper = { version = "0.12", optional = true}
 tokio-retry = { version = "0.2", optional = true}
 futures = { version = "0.1", optional = true }
-hyper-tls = { version = "0.2", optional = true }
+hyper-tls = { version = "0.3", optional = true }
 http = { version = "0.1", optional = true }
 metrix = { version = "0.7", optional = true }
 

@@ -88,7 +88,9 @@ impl AsyncTokenInfoServiceClient {
         };
 
         let https = HttpsConnector::new(4)?;
-        let http_client = ::hyper::Client::builder().build::<_, Body>(https);
+        let http_client = ::hyper::Client::builder()
+            .http1_writev(false)
+            .build::<_, Body>(https);
 
         let http_client = Arc::new(http_client);
 
