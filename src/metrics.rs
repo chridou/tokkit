@@ -197,7 +197,10 @@ pub mod metrix {
         L: Clone + Eq + Send + 'static,
     {
         panel.set_counter(Counter::new_with_defaults("count"));
-        panel.set_meter(Meter::new_with_defaults("per_second"));
+        let mut meter = Meter::new_with_defaults("per_second");
+        meter.set_five_minute_rate_enabled(true);
+        meter.set_fifteen_minute_rate_enabled(true);
+        panel.set_meter(meter);
         cockpit.add_panel(panel);
     }
 
@@ -209,7 +212,10 @@ pub mod metrix {
     {
         panel.set_value_scaling(ValueScaling::NanosToMicros);
         panel.set_counter(Counter::new_with_defaults("count"));
-        panel.set_meter(Meter::new_with_defaults("per_second"));
+        let mut meter = Meter::new_with_defaults("per_second");
+        meter.set_five_minute_rate_enabled(true);
+        meter.set_fifteen_minute_rate_enabled(true);
+        panel.set_meter(meter);
         panel.set_histogram(Histogram::new_with_defaults("time_us"));
         cockpit.add_panel(panel);
     }

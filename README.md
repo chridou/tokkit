@@ -45,6 +45,8 @@ let tokeninfo = service.introspect(&token).unwrap();
 
 ## Recent changes
 
+* 0.11.0
+   * updated metrix
 * 0.10.3
    * disable vectorized write on http1
 * 0.10.2
