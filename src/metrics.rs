@@ -20,6 +20,7 @@ pub trait MetricsCollector {
     fn introspection_service_call_success(&self, request_started: Instant);
 }
 
+#[derive(Clone)]
 pub struct DevNullMetricsCollector;
 
 impl MetricsCollector for DevNullMetricsCollector {
@@ -40,7 +41,7 @@ pub mod metrix {
     use metrix::cockpit::*;
     use metrix::instruments::*;
     use metrix::processor::*;
-    use metrix::TelemetryTransmitterSync;
+    use metrix::TelemetryTransmitter;
     use metrix::TransmitsTelemetryData;
 
     #[derive(Clone, PartialEq, Eq)]
@@ -62,8 +63,8 @@ pub mod metrix {
     ///  library
     #[derive(Clone)]
     pub struct MetrixCollector {
-        introspection_transmitter: TelemetryTransmitterSync<MetricsIntrospectionRequest>,
-        service_transmitter: TelemetryTransmitterSync<MetricsIntrospectionService>,
+        introspection_transmitter: TelemetryTransmitter<MetricsIntrospectionRequest>,
+        service_transmitter: TelemetryTransmitter<MetricsIntrospectionService>,
     }
 
     impl MetrixCollector {
@@ -131,7 +132,7 @@ pub mod metrix {
     }
 
     fn create_introspection_metrics() -> (
-        TelemetryTransmitterSync<MetricsIntrospectionRequest>,
+        TelemetryTransmitter<MetricsIntrospectionRequest>,
         TelemetryProcessor<MetricsIntrospectionRequest>,
     ) {
         let mut cockpit: Cockpit<MetricsIntrospectionRequest> = Cockpit::without_name(None);
@@ -161,11 +162,11 @@ pub mod metrix {
 
         tx.add_cockpit(cockpit);
 
-        (tx.synced(), rx)
+        (tx, rx)
     }
 
     fn create_introspection_service_metrics() -> (
-        TelemetryTransmitterSync<MetricsIntrospectionService>,
+        TelemetryTransmitter<MetricsIntrospectionService>,
         TelemetryProcessor<MetricsIntrospectionService>,
     ) {
         let mut cockpit: Cockpit<MetricsIntrospectionService> = Cockpit::without_name(None);
@@ -189,7 +190,7 @@ pub mod metrix {
 
         tx.add_cockpit(cockpit);
 
-        (tx.synced(), rx)
+        (tx, rx)
     }
 
     fn add_counting_instruments_to_cockpit<L>(cockpit: &mut Cockpit<L>, mut panel: Panel<L>)

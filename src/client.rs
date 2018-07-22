@@ -104,7 +104,9 @@ where
     /// Build the `TokenInfoServiceClient`. Fails if not all mandatory fields
     /// are set.
     #[cfg(feature = "async")]
-    pub fn build_async(self) -> InitializationResult<AsyncTokenInfoServiceClient> {
+    pub fn build_async(
+        self,
+    ) -> InitializationResult<AsyncTokenInfoServiceClient<DevNullMetricsCollector>> {
         self.build_async_with_metrics(DevNullMetricsCollector)
     }
 
@@ -114,9 +116,9 @@ where
     pub fn build_async_with_metrics<M>(
         self,
         metrics_collector: M,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient>
+    ) -> InitializationResult<AsyncTokenInfoServiceClient<M>>
     where
-        M: MetricsCollector + Send + Sync + 'static,
+        M: MetricsCollector + Clone + Send + 'static,
     {
         let parser = if let Some(parser) = self.parser {
             parser
@@ -130,7 +132,7 @@ where
             return Err(InitializationError("No endpoint.".into()));
         };
 
-        AsyncTokenInfoServiceClient::with_metrics::<P, M>(
+        AsyncTokenInfoServiceClient::with_metrics::<P>(
             &endpoint,
             self.query_parameter.as_ref().map(|s| &**s),
             self.fallback_endpoint.as_ref().map(|s| &**s),
@@ -150,7 +152,7 @@ where
         self,
         takes_metrics: &mut M,
         group_name: Option<T>,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient>
+    ) -> InitializationResult<AsyncTokenInfoServiceClient<MetrixCollector>>
     where
         M: AggregatesProcessors,
         T: Into<String>,

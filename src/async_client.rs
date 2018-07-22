@@ -37,21 +37,24 @@ pub trait AsyncTokenInfoService {
 }
 
 #[derive(Clone)]
-pub struct AsyncTokenInfoServiceClient {
+pub struct AsyncTokenInfoServiceClient<M> {
     url_prefix: Arc<String>,
     fallback_url_prefix: Option<Arc<String>>,
     http_client: Arc<HttpClient>,
     parser: Arc<TokenInfoParser + Send + Sync + 'static>,
-    metrics_collector: Arc<MetricsCollector + Send + Sync + 'static>,
+    metrics_collector: M,
 }
 
-impl AsyncTokenInfoServiceClient {
+impl<M> AsyncTokenInfoServiceClient<M>
+where
+    M: MetricsCollector + Clone + Send + 'static,
+{
     pub fn new<P>(
         endpoint: &str,
         query_parameter: Option<&str>,
         fallback_endpoint: Option<&str>,
         parser: P,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient>
+    ) -> InitializationResult<AsyncTokenInfoServiceClient<DevNullMetricsCollector>>
     where
         P: TokenInfoParser + Send + Sync + 'static,
     {
@@ -64,16 +67,15 @@ impl AsyncTokenInfoServiceClient {
         )
     }
 
-    pub fn with_metrics<P, M>(
+    pub fn with_metrics<P>(
         endpoint: &str,
         query_parameter: Option<&str>,
         fallback_endpoint: Option<&str>,
         parser: P,
         metrics_collector: M,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient>
+    ) -> InitializationResult<AsyncTokenInfoServiceClient<M>>
     where
         P: TokenInfoParser + Send + Sync + 'static,
-        M: MetricsCollector + Send + Sync + 'static,
     {
         let url_prefix = assemble_url_prefix(endpoint, &query_parameter)
             .map_err(|err| InitializationError(err))?;
@@ -98,13 +100,16 @@ impl AsyncTokenInfoServiceClient {
             url_prefix: Arc::new(url_prefix),
             fallback_url_prefix: fallback_url_prefix.map(|fb| Arc::new(fb)),
             parser: Arc::new(parser),
-            metrics_collector: Arc::new(metrics_collector),
+            metrics_collector: metrics_collector,
             http_client,
         })
     }
 }
 
-impl AsyncTokenInfoService for AsyncTokenInfoServiceClient {
+impl<M> AsyncTokenInfoService for AsyncTokenInfoServiceClient<M>
+where
+    M: MetricsCollector + Clone + Send + 'static,
+{
     fn introspect(
         &self,
         token: &AccessToken,
@@ -212,14 +217,17 @@ fn process_response(
     Box::new(f)
 }
 
-fn execute_with_retry(
+fn execute_with_retry<M>(
     http_client: Arc<HttpClient>,
     token: AccessToken,
     url_prefix: &str,
     parser: Arc<TokenInfoParser + Send + Sync + 'static>,
     budget: Duration,
-    metrics_collector: Arc<MetricsCollector + Send + Sync + 'static>,
-) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static> {
+    metrics_collector: M,
+) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static>
+where
+    M: MetricsCollector + Clone + Send + 'static,
+{
     if budget == Duration::from_secs(0) {
         return Box::new(future::err(
             TokenInfoErrorKind::Other("Initial reuest budget was 0".into()).into(),
@@ -271,13 +279,16 @@ fn execute_with_retry(
     Box::new(future)
 }
 
-fn execute_once(
+fn execute_once<M>(
     client: Arc<HttpClient>,
     token: AccessToken,
     url_prefix: &str,
     parser: Arc<TokenInfoParser + Send + Sync + 'static>,
-    metrics_collector: Arc<MetricsCollector + Send + Sync + 'static>,
-) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static> {
+    metrics_collector: M,
+) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static>
+where
+    M: MetricsCollector + Send + 'static,
+{
     let start = Instant::now();
     let f = future::result(complete_url(url_prefix, &token))
         .and_then(move |uri| client.get(uri).map_err(Into::into))
