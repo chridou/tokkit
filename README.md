@@ -45,6 +45,8 @@ let tokeninfo = service.introspect(&token).unwrap();
 
 ## Recent changes
 
+* 0.12.0
+   * async client is not sync anymore and should be cloned
 * 0.11.0
    * updated metrix
 * 0.10.3
