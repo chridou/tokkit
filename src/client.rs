@@ -41,7 +41,7 @@ pub struct TokenInfoServiceClientBuilder<P: TokenInfoParser> {
 
 impl<P> TokenInfoServiceClientBuilder<P>
 where
-    P: TokenInfoParser + Sync + Send + 'static,
+    P: TokenInfoParser + Clone + Sync + Send + 'static,
 {
     /// Create a new `TokenInfoServiceClientBuilder` with the given
     /// `TokenInfoParser` already set.
@@ -106,7 +106,7 @@ where
     #[cfg(feature = "async")]
     pub fn build_async(
         self,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient<DevNullMetricsCollector>> {
+    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, DevNullMetricsCollector>> {
         self.build_async_with_metrics(DevNullMetricsCollector)
     }
 
@@ -116,7 +116,7 @@ where
     pub fn build_async_with_metrics<M>(
         self,
         metrics_collector: M,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient<M>>
+    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, M>>
     where
         M: MetricsCollector + Clone + Send + 'static,
     {
@@ -132,7 +132,7 @@ where
             return Err(InitializationError("No endpoint.".into()));
         };
 
-        AsyncTokenInfoServiceClient::with_metrics::<P>(
+        AsyncTokenInfoServiceClient::with_metrics(
             &endpoint,
             self.query_parameter.as_ref().map(|s| &**s),
             self.fallback_endpoint.as_ref().map(|s| &**s),
@@ -152,7 +152,7 @@ where
         self,
         takes_metrics: &mut M,
         group_name: Option<T>,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient<MetrixCollector>>
+    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, MetrixCollector>>
     where
         M: AggregatesProcessors,
         T: Into<String>,

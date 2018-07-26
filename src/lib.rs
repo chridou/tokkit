@@ -46,6 +46,8 @@
 //!
 //! ## Recent changes
 //!
+//! * 0.13.0
+//!    * parser does not need the http client in an Arc
 //! * 0.12.1
 //!    * async client does not need the http client in an Arc
 //! * 0.12.0
