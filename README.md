@@ -45,20 +45,12 @@ let tokeninfo = service.introspect(&token).unwrap();
 
 ## Recent changes
 
+* 0.12.1
+   * async client does not need the http client in an Arc
 * 0.12.0
    * async client is not sync anymore and should be cloned
 * 0.11.0
    * updated metrix
-* 0.10.3
-   * disable vectorized write on http1
-* 0.10.2
-   * Fixed async API
-* 0.10.1
-   * Made futures `Send` + `'static`
-* 0.10.0
-   * Remove executor and use hyper runtime
-* 0.9.0
-   * Use hyper 0.12
 
 ## License
 

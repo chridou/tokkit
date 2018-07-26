@@ -40,7 +40,7 @@ pub trait AsyncTokenInfoService {
 pub struct AsyncTokenInfoServiceClient<M> {
     url_prefix: Arc<String>,
     fallback_url_prefix: Option<Arc<String>>,
-    http_client: Arc<HttpClient>,
+    http_client: HttpClient,
     parser: Arc<TokenInfoParser + Send + Sync + 'static>,
     metrics_collector: M,
 }
@@ -93,8 +93,6 @@ where
         let http_client = ::hyper::Client::builder()
             .http1_writev(false)
             .build::<_, Body>(https);
-
-        let http_client = Arc::new(http_client);
 
         Ok(AsyncTokenInfoServiceClient {
             url_prefix: Arc::new(url_prefix),
@@ -150,7 +148,7 @@ where
 
         let metrics_collector = self.metrics_collector.clone();
         let f = execute_with_retry(
-            self.http_client.clone(),
+            &self.http_client,
             token.clone(),
             &self.url_prefix,
             self.parser.clone(),
@@ -218,7 +216,7 @@ fn process_response(
 }
 
 fn execute_with_retry<M>(
-    http_client: Arc<HttpClient>,
+    http_client: &HttpClient,
     token: AccessToken,
     url_prefix: &str,
     parser: Arc<TokenInfoParser + Send + Sync + 'static>,
@@ -280,7 +278,7 @@ where
 }
 
 fn execute_once<M>(
-    client: Arc<HttpClient>,
+    client: HttpClient,
     token: AccessToken,
     url_prefix: &str,
     parser: Arc<TokenInfoParser + Send + Sync + 'static>,
