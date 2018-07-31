@@ -46,6 +46,8 @@
 //!
 //! ## Recent changes
 //!
+//! * 0.14.0
+//!    * Add a client that takes an HttpClient as a parameter
 //! * 0.13.0
 //!    * parser does not need the http client in an Arc
 //! * 0.12.1

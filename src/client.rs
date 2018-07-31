@@ -15,7 +15,7 @@ use {AccessToken, InitializationError, InitializationResult, TokenInfo};
 use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult, TokenInfoService};
 
 #[cfg(feature = "async")]
-use async_client::AsyncTokenInfoServiceClient;
+use async_client::AsyncTokenInfoServiceClientLight;
 #[cfg(feature = "metrix")]
 use metrics::metrix::MetrixCollector;
 #[cfg(feature = "async")]
@@ -106,7 +106,7 @@ where
     #[cfg(feature = "async")]
     pub fn build_async(
         self,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, DevNullMetricsCollector>> {
+    ) -> InitializationResult<AsyncTokenInfoServiceClientLight<P, DevNullMetricsCollector>> {
         self.build_async_with_metrics(DevNullMetricsCollector)
     }
 
@@ -116,7 +116,7 @@ where
     pub fn build_async_with_metrics<M>(
         self,
         metrics_collector: M,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, M>>
+    ) -> InitializationResult<AsyncTokenInfoServiceClientLight<P, M>>
     where
         M: MetricsCollector + Clone + Send + 'static,
     {
@@ -132,7 +132,7 @@ where
             return Err(InitializationError("No endpoint.".into()));
         };
 
-        AsyncTokenInfoServiceClient::with_metrics(
+        AsyncTokenInfoServiceClientLight::with_metrics(
             &endpoint,
             self.query_parameter.as_ref().map(|s| &**s),
             self.fallback_endpoint.as_ref().map(|s| &**s),
@@ -152,7 +152,7 @@ where
         self,
         takes_metrics: &mut M,
         group_name: Option<T>,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, MetrixCollector>>
+    ) -> InitializationResult<AsyncTokenInfoServiceClientLight<P, MetrixCollector>>
     where
         M: AggregatesProcessors,
         T: Into<String>,
