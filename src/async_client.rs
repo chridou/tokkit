@@ -39,6 +39,9 @@ pub trait AsyncTokenInfoService {
 
 /// Gives a `TokenInfo` for an `AccessToken`.
 ///
+/// This is a "light" version that does not have its own HTTP client.
+/// Instead it has to be passed on every call.
+///
 /// See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
 pub trait AsyncTokenInfoServiceLight {
     /// Gives a `TokenInfo` for an `AccessToken`.
@@ -63,6 +66,14 @@ pub trait AsyncTokenInfoServiceLight {
         C: Connect + Send + 'static;
 }
 
+/// A complete introspection client that owns a
+/// HTTP client.
+///
+/// This client can also be created from the factory methods in
+/// `AsyncTokenInfoServiceClientLight`:
+///
+/// * `AsyncTokenInfoServiceClientLight::with_client`
+/// * `AsyncTokenInfoServiceClientLight::with_default_client`
 #[derive(Clone)]
 pub struct AsyncTokenInfoServiceClient<P, M, C> {
     url_prefix: Arc<String>,
@@ -141,14 +152,6 @@ where
     }
 }
 
-pub fn default_http_client(num_dns_threads: usize) -> Result<HttpClient, InitializationError> {
-    let https = HttpsConnector::new(num_dns_threads)?;
-    let http_client = ::hyper::Client::builder()
-        .http1_writev(false)
-        .build::<_, Body>(https);
-    Ok(http_client)
-}
-
 impl<P, M, C> AsyncTokenInfoService for AsyncTokenInfoServiceClient<P, M, C>
 where
     P: TokenInfoParser + Clone + Send + 'static,
@@ -218,6 +221,13 @@ where
     }
 }
 
+/// A an introspection client that does not have its own HTTP Client
+///
+/// This client can also be used as a factory factory for
+/// `AsyncTokenInfoServiceClient`:
+///
+/// * `AsyncTokenInfoServiceClientLight::with_client`
+/// * `AsyncTokenInfoServiceClientLight::with_default_client`
 #[derive(Clone)]
 pub struct AsyncTokenInfoServiceClientLight<P, M> {
     url_prefix: Arc<String>,
@@ -273,7 +283,7 @@ where
         })
     }
 
-    pub fn to_async_token_info_service_client<C>(
+    pub fn with_client<C>(
         &self,
         http_client: Client<C, Body>,
     ) -> AsyncTokenInfoServiceClient<P, M, C>
@@ -288,6 +298,24 @@ where
             self.metrics_collector.clone(),
         )
     }
+
+    pub fn with_default_client(
+        &self,
+        num_dns_threads: usize,
+    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, M, HttpsConnector<HttpConnector>>>
+    {
+        let http_client = default_http_client(num_dns_threads)?;
+
+        Ok(self.with_client(http_client))
+    }
+}
+
+fn default_http_client(num_dns_threads: usize) -> Result<HttpClient, InitializationError> {
+    let https = HttpsConnector::new(num_dns_threads)?;
+    let http_client = ::hyper::Client::builder()
+        .http1_writev(false)
+        .build::<_, Body>(https);
+    Ok(http_client)
 }
 
 impl<P, M> AsyncTokenInfoServiceLight for AsyncTokenInfoServiceClientLight<P, M>

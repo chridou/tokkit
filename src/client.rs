@@ -101,8 +101,8 @@ where
         )
     }
 
-    /// Build the `TokenInfoServiceClient`. Fails if not all mandatory fields
-    /// are set.
+    /// Build the `AsyncTokenInfoServiceClientLight`. Fails if not all
+    /// mandatory fields are set.
     #[cfg(feature = "async")]
     pub fn build_async(
         self,
@@ -110,8 +110,8 @@ where
         self.build_async_with_metrics(DevNullMetricsCollector)
     }
 
-    /// Build the `TokenInfoServiceClient`. Fails if not all mandatory fields
-    /// are set.
+    /// Build the `AsyncTokenInfoServiceClientLight`. Fails if not all
+    /// mandatory fields are set.
     #[cfg(feature = "async")]
     pub fn build_async_with_metrics<M>(
         self,
@@ -141,8 +141,8 @@ where
         )
     }
 
-    /// Build the `TokenInfoServiceClient`. Fails if not all mandatory fields
-    /// are set.
+    /// Build the `AsyncTokenInfoServiceClientLight`. Fails if not all
+    /// mandatory fields are set.
     ///
     /// If `group_name` is defined a new group with the given
     /// name will be created. Otherwise the metrics of the
