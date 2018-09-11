@@ -46,16 +46,12 @@
 //!
 //! ## Recent changes
 //!
+//! * 0.15.0
+//!    * updated metrix
 //! * 0.14.0
 //!    * Add a client that takes an HttpClient as a parameter
 //! * 0.13.0
 //!    * parser does not need the http client in an Arc
-//! * 0.12.1
-//!    * async client does not need the http client in an Arc
-//! * 0.12.0
-//!    * async client is not sync anymore and should be cloned
-//! * 0.11.0
-//!    * updated metrix
 //!
 //! ## License
 //!
