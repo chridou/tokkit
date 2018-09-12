@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use futures::future::Executor;
 use futures::*;
 use hyper::client::connect::Connect;
 use hyper::client::HttpConnector;
@@ -283,6 +284,7 @@ where
         })
     }
 
+    /// Creates an `AsyncTokenInfoService` with the given HttpClient
     pub fn with_client<C>(
         &self,
         http_client: Client<C, Body>,
@@ -299,6 +301,8 @@ where
         )
     }
 
+    /// Creates an `AsyncTokenInfoService` with a default client using
+    /// the given number of threads to do DNS resolving
     pub fn with_default_client(
         &self,
         num_dns_threads: usize,
@@ -308,12 +312,46 @@ where
 
         Ok(self.with_client(http_client))
     }
+
+    /// Creates an `AsyncTokenInfoService` with a default client using
+    /// the given number of threads to do DNS resolving and using
+    /// the given `Executor`
+    pub fn with_default_client_and_executor<E>(
+        &self,
+        num_dns_threads: usize,
+        executor: E,
+    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, M, HttpsConnector<HttpConnector>>>
+    where
+        E: Executor<Box<Future<Item = (), Error = ()> + Send + 'static>> + Send + Sync + 'static,
+    {
+        let http_client = default_http_client_with_executor(num_dns_threads, executor)?;
+
+        Ok(self.with_client(http_client))
+    }
 }
 
-fn default_http_client(num_dns_threads: usize) -> Result<HttpClient, InitializationError> {
+/// Creates a default HTTPS client with the given number of threads for DNS resolving
+pub fn default_http_client(num_dns_threads: usize) -> Result<HttpClient, InitializationError> {
     let https = HttpsConnector::new(num_dns_threads)?;
     let http_client = ::hyper::Client::builder()
         .http1_writev(false)
+        .build::<_, Body>(https);
+    Ok(http_client)
+}
+
+/// Creates a default HTTPS client with the given number of
+/// threads for DNS resolving using the given `Executor`
+pub fn default_http_client_with_executor<E>(
+    num_dns_threads: usize,
+    executor: E,
+) -> Result<HttpClient, InitializationError>
+where
+    E: Executor<Box<Future<Item = (), Error = ()> + Send + 'static>> + Send + Sync + 'static,
+{
+    let https = HttpsConnector::new(num_dns_threads)?;
+    let http_client = ::hyper::Client::builder()
+        .http1_writev(false)
+        .executor(executor)
         .build::<_, Body>(https);
     Ok(http_client)
 }
