@@ -46,6 +46,8 @@
 //!
 //! ## Recent changes
 //!
+//! * 0.15.2
+//!    * Async Client has default https connector
 //! * 0.15.1
 //!    * Async Client can be created with a given Executor
 //! * 0.15.0

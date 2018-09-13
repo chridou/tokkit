@@ -76,7 +76,7 @@ pub trait AsyncTokenInfoServiceLight {
 /// * `AsyncTokenInfoServiceClientLight::with_client`
 /// * `AsyncTokenInfoServiceClientLight::with_default_client`
 #[derive(Clone)]
-pub struct AsyncTokenInfoServiceClient<P, M, C> {
+pub struct AsyncTokenInfoServiceClient<P, M, C = HttpsConnector<HttpConnector>> {
     url_prefix: Arc<String>,
     fallback_url_prefix: Option<Arc<String>>,
     http_client: Client<C, Body>,
