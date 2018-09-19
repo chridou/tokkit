@@ -452,7 +452,7 @@ fn process_response(
         .context(TokenInfoErrorKind::Io(
             "Could not read response bode".to_string(),
         ))?;
-    if response.status() == StatusCode::Ok {
+    if response.status() == StatusCode::OK {
         let result: TokenInfo = match parser.parse(&body) {
             Ok(info) => info,
             Err(msg) => {
@@ -460,7 +460,7 @@ fn process_response(
             }
         };
         Ok(result)
-    } else if response.status() == StatusCode::Unauthorized {
+    } else if response.status() == StatusCode::UNAUTHORIZED {
         let msg = str::from_utf8(&body)?;
         return Err(TokenInfoErrorKind::NotAuthenticated(format!(
             "The server refused the token: {}",

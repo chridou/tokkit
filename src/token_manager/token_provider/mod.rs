@@ -129,8 +129,8 @@ fn evaluate_response(rsp: &mut Response) -> AccessTokenProviderResult {
     let mut body = Vec::new();
     rsp.read_to_end(&mut body)?;
     match status {
-        StatusCode::Ok => parse_response(&body, None),
-        StatusCode::BadRequest => Err(AccessTokenProviderError::BadAuthorizationRequest(
+        StatusCode::OK => parse_response(&body, None),
+        StatusCode::BAD_REQUEST => Err(AccessTokenProviderError::BadAuthorizationRequest(
             parse_error(&body)?,
         )),
         _ if status.is_client_error() => {
