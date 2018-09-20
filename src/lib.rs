@@ -46,6 +46,8 @@
 //!
 //! ## Recent changes
 //!
+//! * 0.15.3
+//!    * Use reqwest 0.9
 //! * 0.15.2
 //!    * Async Client has default https connector
 //! * 0.15.1

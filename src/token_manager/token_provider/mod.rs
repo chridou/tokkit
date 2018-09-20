@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use json;
 use json::*;
-use reqwest::header;
+use reqwest::header::*;
 use reqwest::{Client, Error as RError, Response, StatusCode};
 use url::form_urlencoded;
 
@@ -163,17 +163,21 @@ fn execute_access_token_request(
     scopes: &[Scope],
     credentials: RequestTokenCredentials,
 ) -> StdResult<Response, RError> {
-    let mut headers = header::Headers::new();
+    let request_builder = client
+        .post(full_url)
+        .header(
+            CONTENT_TYPE,
+            HeaderValue::from_static("application/x-www-form-urlencoded"),
+        ).basic_auth(
+            credentials.client_credentials.client_id,
+            Some(credentials.client_credentials.client_secret),
+        );
+
     let mut scope_vec = Vec::new();
+
     for scope in scopes {
         scope_vec.push(scope.0.clone());
     }
-
-    headers.set(header::Authorization(header::Basic {
-        username: credentials.client_credentials.client_id.clone(),
-        password: Some(credentials.client_credentials.client_secret.clone()),
-    }));
-    headers.set(header::ContentType::form_url_encoded());
 
     let form_encoded = form_urlencoded::Serializer::new(String::new())
         .append_pair("grant_type", "password")
@@ -182,10 +186,7 @@ fn execute_access_token_request(
         .append_pair("scope", &scope_vec.join(" "))
         .finish();
 
-    let mut request_builder = client.post(full_url);
-    request_builder.headers(headers).body(form_encoded);
-
-    let rsp = request_builder.send()?;
+    let rsp = request_builder.body(form_encoded).send()?;
 
     Ok(rsp)
 }

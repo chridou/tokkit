@@ -435,7 +435,7 @@ fn get_from_remote_no_retry(
     http_client: &Client,
     parser: &TokenInfoParser,
 ) -> TokenInfoResult<TokenInfo> {
-    let mut request_builder = http_client.get(url);
+    let request_builder = http_client.get(url);
     match request_builder.send() {
         Ok(ref mut response) => process_response(response, parser),
         Err(err) => Err(TokenInfoErrorKind::Connection(err.to_string()).into()),
