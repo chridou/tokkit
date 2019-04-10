@@ -276,8 +276,8 @@ pub fn parse(
             };
             let user_id = if let Some(user_id_field) = user_id_field {
                 match data.get(user_id_field) {
-                    Some(&JsonValue::Short(ref user_id)) => Some(UserId::new(user_id.as_ref())),
-                    Some(&JsonValue::String(ref user_id)) => Some(UserId::new(user_id.as_ref())),
+                    Some(&JsonValue::Short(ref user_id)) => Some(UserId::new(user_id.as_str())),
+                    Some(&JsonValue::String(ref user_id)) => Some(UserId::new(user_id.as_str())),
                     invalid => bail!(
                         "Expected a string as the user id in field '{}' but found a {:?}",
                         user_id_field,
@@ -294,7 +294,7 @@ pub fn parse(
                         for elem in values {
                             match elem {
                                 &JsonValue::String(ref v) => scopes.push(Scope(v.clone())),
-                                &JsonValue::Short(ref v) => scopes.push(Scope::new(v.as_ref())),
+                                &JsonValue::Short(ref v) => scopes.push(Scope::new(v.as_str())),
                                 invalid => bail!(
                                     "Expected a string as a scope in ['{}'] but found '{}'",
                                     scope_field,

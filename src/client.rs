@@ -194,7 +194,7 @@ where
                 return Err(InitializationError(format!(
                     "'TOKKIT_TOKEN_INTROSPECTION_QUERY_PARAMETER': {}",
                     err
-                )))
+                )));
             }
         };
         let fallback_endpoint = match env::var("TOKKIT_TOKEN_INTROSPECTION_FALLBACK_ENDPOINT") {
@@ -204,7 +204,7 @@ where
                 return Err(InitializationError(format!(
                     "'TOKKIT_TOKEN_INTROSPECTION_FALLBACK_ENDPOINT': {}",
                     err
-                )))
+                )));
             }
         };
         Ok(TokenInfoServiceClientBuilder {
@@ -237,7 +237,7 @@ impl TokenInfoServiceClientBuilder<PlanBTokenInfoParser> {
     ///
     /// [More information](http://planb.readthedocs.io/en/latest/intro.html#token-info)
     pub fn plan_b_from_env(
-) -> InitializationResult<TokenInfoServiceClientBuilder<PlanBTokenInfoParser>> {
+    ) -> InitializationResult<TokenInfoServiceClientBuilder<PlanBTokenInfoParser>> {
         let mut builder = Self::from_env()?;
         builder.with_parser(PlanBTokenInfoParser);
         builder.with_query_parameter("access_token");
@@ -456,7 +456,7 @@ fn process_response(
         let result: TokenInfo = match parser.parse(&body) {
             Ok(info) => info,
             Err(msg) => {
-                return Err(TokenInfoErrorKind::InvalidResponseContent(msg.to_string()).into())
+                return Err(TokenInfoErrorKind::InvalidResponseContent(msg.to_string()).into());
             }
         };
         Ok(result)
@@ -465,7 +465,8 @@ fn process_response(
         return Err(TokenInfoErrorKind::NotAuthenticated(format!(
             "The server refused the token: {}",
             msg
-        )).into());
+        ))
+        .into());
     } else if response.status().is_client_error() {
         let msg = str::from_utf8(&body)?;
         return Err(TokenInfoErrorKind::Client(msg.to_string()).into());
