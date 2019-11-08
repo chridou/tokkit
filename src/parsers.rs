@@ -347,9 +347,9 @@ pub fn parse(
                 None
             };
             Ok(TokenInfo {
-                active: active,
-                user_id: user_id,
-                scope: scope,
+                active,
+                user_id,
+                scope,
                 expires_in_seconds: expires_in,
             })
         }
@@ -363,7 +363,7 @@ pub fn parse(
 fn split_scopes(input: &str) -> Vec<Scope> {
     input
         .split(' ')
-        .filter(|s| s.len() > 0)
+        .filter(|s| !s.is_empty())
         .map(Scope::new)
         .collect()
 }
