@@ -45,6 +45,8 @@ let tokeninfo = service.introspect(&token).unwrap();
 
 ## Recent changes
 
+* 0.16.0
+   * Upgraded `metrix` feature to `0.10` (breaking change in `metrix`)
 * 0.15.3
    * Use reqwest 0.9
 * 0.15.2

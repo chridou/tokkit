@@ -31,7 +31,7 @@ impl TokenInfoError {
 }
 
 impl Fail for TokenInfoError {
-    fn cause(&self) -> Option<&Fail> {
+    fn cause(&self) -> Option<&dyn Fail> {
         self.inner.cause()
     }
 
@@ -50,7 +50,7 @@ impl From<TokenInfoErrorKind> for TokenInfoError {
 
 impl From<Context<TokenInfoErrorKind>> for TokenInfoError {
     fn from(inner: Context<TokenInfoErrorKind>) -> TokenInfoError {
-        TokenInfoError { inner: inner }
+        TokenInfoError { inner }
     }
 }
 

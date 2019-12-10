@@ -38,11 +38,11 @@ impl MetricsCollector for DevNullMetricsCollector {
 pub mod metrix {
     use std::time::Instant;
 
-    use metrix::cockpit::*;
     use metrix::instruments::*;
     use metrix::processor::*;
     use metrix::TelemetryTransmitter;
     use metrix::TransmitsTelemetryData;
+    use metrix::*;
 
     #[derive(Clone, PartialEq, Eq)]
     enum MetricsIntrospectionRequest {
@@ -135,24 +135,24 @@ pub mod metrix {
         TelemetryTransmitter<MetricsIntrospectionRequest>,
         TelemetryProcessor<MetricsIntrospectionRequest>,
     ) {
-        let mut cockpit: Cockpit<MetricsIntrospectionRequest> = Cockpit::without_name(None);
+        let mut cockpit: Cockpit<MetricsIntrospectionRequest> = Cockpit::without_name();
 
-        let panel = Panel::with_name(
+        let panel = Panel::named(
             MetricsIntrospectionRequest::IncomingIntrospectionRequest,
             "incoming",
         );
         add_counting_instruments_to_cockpit(&mut cockpit, panel);
 
-        let panel = Panel::with_name(MetricsIntrospectionRequest::IntrospectionRequest, "all");
+        let panel = Panel::named(MetricsIntrospectionRequest::IntrospectionRequest, "all");
         add_counting_and_time_us_instruments_to_cockpit(&mut cockpit, panel);
 
-        let panel = Panel::with_name(
+        let panel = Panel::named(
             MetricsIntrospectionRequest::IntrospectionRequestSuccess,
             "successful",
         );
         add_counting_and_time_us_instruments_to_cockpit(&mut cockpit, panel);
 
-        let panel = Panel::with_name(
+        let panel = Panel::named(
             MetricsIntrospectionRequest::IntrospectionRequestFailure,
             "failed",
         );
@@ -169,18 +169,18 @@ pub mod metrix {
         TelemetryTransmitter<MetricsIntrospectionService>,
         TelemetryProcessor<MetricsIntrospectionService>,
     ) {
-        let mut cockpit: Cockpit<MetricsIntrospectionService> = Cockpit::without_name(None);
+        let mut cockpit: Cockpit<MetricsIntrospectionService> = Cockpit::without_name();
 
-        let panel = Panel::with_name(MetricsIntrospectionService::IntrospectionServiceCall, "all");
+        let panel = Panel::named(MetricsIntrospectionService::IntrospectionServiceCall, "all");
         add_counting_and_time_us_instruments_to_cockpit(&mut cockpit, panel);
 
-        let panel = Panel::with_name(
+        let panel = Panel::named(
             MetricsIntrospectionService::IntrospectionServiceCallSuccess,
             "successful",
         );
         add_counting_and_time_us_instruments_to_cockpit(&mut cockpit, panel);
 
-        let panel = Panel::with_name(
+        let panel = Panel::named(
             MetricsIntrospectionService::IntrospectionServiceCallFailure,
             "failed",
         );
@@ -211,14 +211,14 @@ pub mod metrix {
     ) where
         L: Clone + Eq + Send + 'static,
     {
-        panel.set_value_scaling(ValueScaling::NanosToMicros);
         panel.set_counter(Counter::new_with_defaults("count"));
         let mut meter = Meter::new_with_defaults("per_second");
         meter.set_five_minute_rate_enabled(true);
         meter.set_fifteen_minute_rate_enabled(true);
         panel.set_meter(meter);
-        panel.set_histogram(Histogram::new_with_defaults("time_us"));
+        panel.set_histogram(
+            Histogram::new_with_defaults("time_us").display_time_unit(TimeUnit::Microseconds),
+        );
         cockpit.add_panel(panel);
     }
-
 }

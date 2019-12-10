@@ -84,7 +84,7 @@ impl<T: Eq + Send + Clone + Display> ManagedTokenBuilder<T> {
         };
 
         Ok(ManagedToken {
-            token_id: token_id,
+            token_id,
             scopes: self.scopes,
         })
     }
@@ -460,7 +460,8 @@ impl<T: Eq + Ord + Clone + Display> GivesAccessTokensById<T> for AccessTokenSour
     }
 
     fn refresh(&self, name: &T) {
-        match self.sender
+        match self
+            .sender
             .lock()
             .unwrap()
             .send(internals::ManagerCommand::ForceRefresh(

@@ -173,7 +173,8 @@ where
             &self.url_prefix,
             self.parser.clone(),
             self.metrics_collector.clone(),
-        ).then(move |result| {
+        )
+        .then(move |result| {
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
@@ -205,7 +206,8 @@ where
             self.parser.clone(),
             budget,
             self.metrics_collector.clone(),
-        ).then(move |result| {
+        )
+        .then(move |result| {
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
@@ -379,7 +381,8 @@ where
             &self.url_prefix,
             self.parser.clone(),
             self.metrics_collector.clone(),
-        ).then(move |result| {
+        )
+        .then(move |result| {
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
@@ -415,7 +418,8 @@ where
             self.parser.clone(),
             budget,
             self.metrics_collector.clone(),
-        ).then(move |result| {
+        )
+        .then(move |result| {
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
@@ -594,8 +598,8 @@ impl From<::hyper::error::Error> for TokenInfoError {
     }
 }
 
-impl From<::http::uri::InvalidUri> for TokenInfoError {
-    fn from(err: ::http::uri::InvalidUri) -> Self {
+impl From<hyper::http::uri::InvalidUri> for TokenInfoError {
+    fn from(err: hyper::http::uri::InvalidUri) -> Self {
         TokenInfoErrorKind::UrlError(err.to_string()).into()
     }
 }

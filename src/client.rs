@@ -210,8 +210,8 @@ where
         Ok(TokenInfoServiceClientBuilder {
             parser: Default::default(),
             endpoint: Some(endpoint),
-            query_parameter: query_parameter,
-            fallback_endpoint: fallback_endpoint,
+            query_parameter,
+            fallback_endpoint,
         })
     }
 }
@@ -294,7 +294,7 @@ pub struct TokenInfoServiceClient {
     url_prefix: Arc<String>,
     fallback_url_prefix: Option<Arc<String>>,
     http_client: Client,
-    parser: Arc<TokenInfoParser + Sync + Send + 'static>,
+    parser: Arc<dyn TokenInfoParser + Sync + Send + 'static>,
 }
 
 impl TokenInfoServiceClient {
@@ -386,7 +386,7 @@ fn get_with_fallback(
     url: Url,
     fallback_url: Option<Url>,
     client: &Client,
-    parser: &TokenInfoParser,
+    parser: &dyn TokenInfoParser,
 ) -> TokenInfoResult<TokenInfo> {
     get_from_remote(url, client, parser).or_else(|err| match *err.kind() {
         TokenInfoErrorKind::Client(_) => Err(err),
@@ -433,7 +433,7 @@ fn get_from_remote(
 fn get_from_remote_no_retry(
     url: Url,
     http_client: &Client,
-    parser: &TokenInfoParser,
+    parser: &dyn TokenInfoParser,
 ) -> TokenInfoResult<TokenInfo> {
     let request_builder = http_client.get(url);
     match request_builder.send() {
@@ -444,7 +444,7 @@ fn get_from_remote_no_retry(
 
 fn process_response(
     response: &mut Response,
-    parser: &TokenInfoParser,
+    parser: &dyn TokenInfoParser,
 ) -> TokenInfoResult<TokenInfo> {
     let mut body = Vec::new();
     response
