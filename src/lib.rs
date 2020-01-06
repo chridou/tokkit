@@ -76,19 +76,6 @@ extern crate log;
 #[macro_use]
 extern crate failure;
 
-#[cfg(feature = "async")]
-extern crate futures;
-#[cfg(feature = "async")]
-extern crate http;
-#[cfg(feature = "async")]
-extern crate hyper;
-#[cfg(feature = "async")]
-extern crate hyper_tls;
-#[cfg(feature = "metrix")]
-extern crate metrix;
-#[cfg(feature = "async")]
-extern crate tokio_retry;
-
 use std::fmt;
 
 #[cfg(feature = "async")]
