@@ -167,27 +167,32 @@ where
         let start = Instant::now();
         self.metrics_collector.incoming_introspection_request();
         let metrics_collector = self.metrics_collector.clone();
-        let f = execute_once(
+
+        let result = execute_once(
             self.http_client.clone(),
             token.clone(),
             &self.url_prefix,
             self.parser.clone(),
             self.metrics_collector.clone(),
-        )
-        .map(move |result| {
+        );
+
+        async move {
+            let result = result.await;
+
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_success(start)
+                    metrics_collector.introspection_request_success(start);
                 }
                 Err(_) => {
                     metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_failure(start)
+                    metrics_collector.introspection_request_failure(start);
                 }
             }
+
             result
-        });
-        f.boxed()
+        }
+        .boxed()
     }
 
     fn introspect_with_retry(
@@ -199,15 +204,18 @@ where
         self.metrics_collector.incoming_introspection_request();
 
         let metrics_collector = self.metrics_collector.clone();
-        let f = execute_with_retry(
+        let result = execute_with_retry(
             &self.http_client,
             token.clone(),
             &self.url_prefix,
             self.parser.clone(),
             budget,
             self.metrics_collector.clone(),
-        )
-        .map(move |result| {
+        );
+
+        async move {
+            let result = result.await;
+
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
@@ -218,9 +226,10 @@ where
                     metrics_collector.introspection_request_failure(start)
                 }
             }
+
             result
-        });
-        f.boxed()
+        }
+        .boxed()
     }
 }
 
@@ -375,14 +384,17 @@ where
         self.metrics_collector.incoming_introspection_request();
 
         let metrics_collector = self.metrics_collector.clone();
-        let f = execute_once(
+        let result = execute_once(
             http_client.clone(),
             token.clone(),
             &self.url_prefix,
             self.parser.clone(),
             self.metrics_collector.clone(),
-        )
-        .map(move |result| {
+        );
+
+        async move {
+            let result = result.await;
+
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
@@ -393,9 +405,10 @@ where
                     metrics_collector.introspection_request_failure(start)
                 }
             }
+
             result
-        });
-        f.boxed()
+        }
+        .boxed()
     }
 
     fn introspect_with_retry<C>(
@@ -411,15 +424,18 @@ where
         self.metrics_collector.incoming_introspection_request();
 
         let metrics_collector = self.metrics_collector.clone();
-        let f = execute_with_retry(
+        let result = execute_with_retry(
             http_client,
             token.clone(),
             &self.url_prefix,
             self.parser.clone(),
             budget,
             self.metrics_collector.clone(),
-        )
-        .map(move |result| {
+        );
+
+        async move {
+            let result = result.await;
+
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
@@ -430,9 +446,10 @@ where
                     metrics_collector.introspection_request_failure(start)
                 }
             }
+
             result
-        });
-        f.boxed()
+        }
+        .boxed()
     }
 }
 
@@ -445,41 +462,41 @@ where
 {
     let status = response.status();
     let body = response.into_body();
-    let f = hyper::body::to_bytes(body)
-        .map_err(|err| TokenInfoErrorKind::Io(format!("Could not get body chunks: {}", err)))
-        .and_then(move |body| {
-            if status == StatusCode::OK {
-                let result = match parser.parse(&body) {
-                    Ok(info) => future::ok(info),
-                    Err(err) => {
-                        let msg: String = String::from_utf8_lossy(&body).into();
-                        future::err(TokenInfoErrorKind::InvalidResponseContent(format!(
-                            "{}: {}",
-                            err, msg
-                        )))
-                    }
-                };
-                result
-            } else if status == StatusCode::UNAUTHORIZED {
-                let msg = String::from_utf8_lossy(&body);
-                future::err(TokenInfoErrorKind::NotAuthenticated(format!(
-                    "The server refused the token: {}",
-                    msg
-                )))
-            } else if status.is_client_error() {
-                let msg = String::from_utf8_lossy(&body).into();
-                future::err(TokenInfoErrorKind::Client(msg))
-            } else if status.is_server_error() {
-                let msg = String::from_utf8_lossy(&body).into();
-                future::err(TokenInfoErrorKind::Server(msg))
-            } else {
-                let msg = String::from_utf8_lossy(&body).into();
-                future::err(TokenInfoErrorKind::Other(msg))
-            }
-        })
-        .map_err(Into::into);
 
-    f.boxed()
+    async move {
+        let body = hyper::body::to_bytes(body).await
+            .map_err(|err| TokenInfoErrorKind::Io(format!("Could not get body chunks: {}", err)))?;
+
+        if status == StatusCode::OK {
+            match parser.parse(&body) {
+                Ok(info) => Ok(info),
+                Err(err) => {
+                    let msg: String = String::from_utf8_lossy(&body).into();
+                    Err(TokenInfoErrorKind::InvalidResponseContent(format!(
+                        "{}: {}",
+                        err, msg
+                    )))
+                }
+            }
+        } else if status == StatusCode::UNAUTHORIZED {
+            let msg = String::from_utf8_lossy(&body);
+            Err(TokenInfoErrorKind::NotAuthenticated(format!(
+                "The server refused the token: {}",
+                msg
+            )))
+        } else if status.is_client_error() {
+            let msg = String::from_utf8_lossy(&body).into();
+            Err(TokenInfoErrorKind::Client(msg))
+        } else if status.is_server_error() {
+            let msg = String::from_utf8_lossy(&body).into();
+            Err(TokenInfoErrorKind::Server(msg))
+        } else {
+            let msg = String::from_utf8_lossy(&body).into();
+            Err(TokenInfoErrorKind::Other(msg))
+        }
+        .map_err(Into::into)
+    }
+    .boxed()
 }
 
 fn execute_with_retry<M, P, C>(
@@ -489,7 +506,7 @@ fn execute_with_retry<M, P, C>(
     parser: P,
     budget: Duration,
     metrics_collector: M,
-) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
+) -> impl Future<Output = Result<TokenInfo, TokenInfoError>> + Send + 'static
 where
     P: TokenInfoParser + Clone + Send + 'static,
     M: MetricsCollector + Clone + Send + 'static,
@@ -502,12 +519,9 @@ where
     }
 
     let deadline = Instant::now() + budget;
-    let token = token.clone();
     let http_client = http_client.clone();
-    let metrics_collector = metrics_collector.clone();
 
     let url_prefix = url_prefix.to_string();
-    let parser = parser.clone();
 
     let retry_strategy = ExponentialBackoff::from_millis(10).map(jitter);
 
@@ -520,6 +534,7 @@ where
                 parser.clone(),
                 metrics_collector.clone(),
             )
+            .boxed()
         } else {
             future::err(TokenInfoErrorKind::BudgetExceeded.into()).boxed()
         }
@@ -546,30 +561,31 @@ fn execute_once<P, M, C>(
     url_prefix: &str,
     parser: P,
     metrics_collector: M,
-) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
+) -> impl Future<Output = Result<TokenInfo, TokenInfoError>> + Send + 'static
 where
     P: TokenInfoParser + Clone + Send + 'static,
     M: MetricsCollector + Send + 'static,
     C: Connect + Clone + Send + Sync + 'static,
 {
     let start = Instant::now();
-    let f = future::ready(complete_url(url_prefix, &token))
-        .and_then(move |uri| client.get(uri).map_err(Into::into))
-        .map(move |result| {
-            match result {
-                Ok(_) => {
-                    metrics_collector.introspection_service_call(start);
-                    metrics_collector.introspection_service_call_success(start)
-                }
-                Err(_) => {
-                    metrics_collector.introspection_service_call(start);
-                    metrics_collector.introspection_service_call_failure(start)
-                }
+    let uri = complete_url(url_prefix, &token);
+
+    async move {
+        let uri = uri?;
+
+        match client.get(uri).await {
+            Ok(response) => {
+                metrics_collector.introspection_service_call(start);
+                metrics_collector.introspection_service_call_success(start);
+                process_response(response, parser).await
             }
-            result
-        })
-        .and_then(|response| process_response(response, parser));
-    f.boxed()
+            Err(err) => {
+                metrics_collector.introspection_service_call(start);
+                metrics_collector.introspection_service_call_failure(start);
+                Err(err.into())
+            }
+        }
+    }
 }
 
 fn complete_url(url_prefix: &str, token: &AccessToken) -> TokenInfoResult<Uri> {
