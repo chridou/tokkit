@@ -7,7 +7,7 @@ mod request_scheduler;
 mod token_updater;
 
 use super::*;
-use token_manager::token_provider::AccessTokenProvider;
+use crate::token_manager::token_provider::AccessTokenProvider;
 
 pub type EpochMillis = u64;
 

@@ -12,16 +12,16 @@ use reqwest::{StatusCode, Url};
 use reqwest::blocking::{Client, Response};
 use url::ParseError;
 
-use parsers::*;
-use {AccessToken, InitializationError, InitializationResult, TokenInfo};
-use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult, TokenInfoService};
+use crate::parsers::*;
+use crate::{AccessToken, InitializationError, InitializationResult, TokenInfo};
+use crate::{TokenInfoError, TokenInfoErrorKind, TokenInfoResult, TokenInfoService};
 
 #[cfg(feature = "async")]
-use async_client::AsyncTokenInfoServiceClientLight;
+use crate::async_client::AsyncTokenInfoServiceClientLight;
 #[cfg(feature = "metrix")]
-use metrics::metrix::MetrixCollector;
+use crate::metrics::metrix::MetrixCollector;
 #[cfg(feature = "async")]
-use metrics::{DevNullMetricsCollector, MetricsCollector};
+use crate::metrics::{DevNullMetricsCollector, MetricsCollector};
 #[cfg(feature = "metrix")]
 use metrix::processor::{AggregatesProcessors, ProcessorMount};
 

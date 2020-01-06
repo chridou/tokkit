@@ -4,7 +4,7 @@ use std::io::prelude::*;
 use std::path::PathBuf;
 use std::result::Result as StdResult;
 
-use {InitializationError, InitializationResult};
+use crate::{InitializationError, InitializationResult};
 
 mod errors;
 pub mod parsers;

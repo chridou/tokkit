@@ -169,9 +169,9 @@ impl Error for AccessTokenProviderError {
     }
 }
 
-impl From<AccessTokenProviderError> for ::token_manager::error::TokenError {
-    fn from(what: AccessTokenProviderError) -> ::token_manager::error::TokenError {
-        ::token_manager::error::TokenErrorKind::AccessTokenProvider(format!(
+impl From<AccessTokenProviderError> for crate::token_manager::error::TokenError {
+    fn from(what: AccessTokenProviderError) -> crate::token_manager::error::TokenError {
+        crate::token_manager::error::TokenErrorKind::AccessTokenProvider(format!(
             "Error from Tokenprovider: {}",
             what
         )).into()

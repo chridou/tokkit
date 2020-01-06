@@ -248,7 +248,7 @@ mod refresh_tests {
     use std::sync::atomic::AtomicBool;
     use std::sync::mpsc;
     use std::sync::{Arc, Mutex};
-    use token_manager::AuthorizationServerResponse;
+    use crate::token_manager::AuthorizationServerResponse;
 
     #[derive(Clone)]
     struct TestClock {

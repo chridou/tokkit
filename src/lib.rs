@@ -73,12 +73,8 @@
 #[macro_use]
 extern crate log;
 
-extern crate backoff;
 #[macro_use]
 extern crate failure;
-extern crate json;
-extern crate reqwest;
-extern crate url;
 
 #[cfg(feature = "async")]
 extern crate futures;

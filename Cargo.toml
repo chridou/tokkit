@@ -10,6 +10,7 @@ readme = "README.md"
 repository = "https://github.com/chridou/tokkit"
 keywords = ["OAUTH2", "token", "token-info", "s2s"]
 categories = ["web-programming"]
+edition = "2018"
 
 [dependencies]
 backoff = "0.1"

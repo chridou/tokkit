@@ -13,7 +13,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use {AccessToken, Scope};
+use crate::{AccessToken, Scope};
 
 mod error;
 mod internals;

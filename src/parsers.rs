@@ -4,7 +4,7 @@ use std::str;
 
 use failure::*;
 
-use {Scope, TokenInfo, UserId};
+use crate::{Scope, TokenInfo, UserId};
 
 /// A parser that can parse a slice of bytes to a `TokenInfo`
 pub trait TokenInfoParser: Send + 'static {

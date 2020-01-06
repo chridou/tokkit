@@ -11,11 +11,11 @@ use hyper_tls::HttpsConnector;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::RetryIf;
 
-use client::assemble_url_prefix;
-use metrics::{DevNullMetricsCollector, MetricsCollector};
-use parsers::*;
-use {AccessToken, InitializationError, InitializationResult, TokenInfo};
-use {TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
+use crate::client::assemble_url_prefix;
+use crate::metrics::{DevNullMetricsCollector, MetricsCollector};
+use crate::parsers::*;
+use crate::{AccessToken, InitializationError, InitializationResult, TokenInfo};
+use crate::{TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 
 pub type HttpClient = Client<HttpsConnector<HttpConnector>, Body>;
 
