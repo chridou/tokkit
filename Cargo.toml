@@ -12,18 +12,18 @@ keywords = ["OAUTH2", "token", "token-info", "s2s"]
 categories = ["web-programming"]
 
 [dependencies]
-log = "0.4"
-failure = "0.1"
-json = "0.12"
-reqwest = "0.9"
 backoff = "0.1"
-url = "2.1"
-hyper = { version = "0.12", optional = true}
-tokio-retry = { version = "0.2", optional = true}
-futures = { version = "0.1", optional = true }
-hyper-tls = { version = "0.3", optional = true }
+failure = "0.1"
+futures = { version = "0.3", optional = true }
 http = { version = "0.2", optional = true }
+hyper = { version = "0.13", optional = true }
+hyper-tls = { version = "0.4", optional = true }
+json = "0.12"
+log = "0.4"
 metrix = { version = "0.10", optional = true }
+reqwest = { version = "0.10", features = ["blocking"] }
+tokio-retry = { version = "0.2", optional = true, git = "https://github.com/omnioiot/rust-tokio-retry", rev = "732c33d" }
+url = "2.1"
 
 [dev-dependencies]
 env_logger = "0.7"

@@ -1,10 +1,11 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use futures::future::Executor;
 use futures::*;
+use futures::future::{self, BoxFuture};
 use hyper::client::connect::Connect;
 use hyper::client::HttpConnector;
+use hyper::rt::Executor;
 use hyper::{Body, Client, Response, StatusCode, Uri};
 use hyper_tls::HttpsConnector;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
@@ -26,7 +27,7 @@ pub trait AsyncTokenInfoService {
     fn introspect(
         &self,
         token: &AccessToken,
-    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static>;
+    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>;
     /// Gives a `TokenInfo` for an `AccessToken` with retries.
     ///
     /// `budget` defines the duration the retries may take
@@ -35,7 +36,7 @@ pub trait AsyncTokenInfoService {
         &self,
         token: &AccessToken,
         budget: Duration,
-    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static>;
+    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>;
 }
 
 /// Gives a `TokenInfo` for an `AccessToken`.
@@ -50,9 +51,9 @@ pub trait AsyncTokenInfoServiceLight {
         &self,
         token: &AccessToken,
         http_client: &Client<C, Body>,
-    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static>
+    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
     where
-        C: Connect + Send + 'static;
+        C: Connect + Clone + Send + Sync + 'static;
     /// Gives a `TokenInfo` for an `AccessToken` with retries.
     ///
     /// `budget` defines the duration the retries may take
@@ -62,9 +63,9 @@ pub trait AsyncTokenInfoServiceLight {
         token: &AccessToken,
         budget: Duration,
         http_client: &Client<C, Body>,
-    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static>
+    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
     where
-        C: Connect + Send + 'static;
+        C: Connect + Clone + Send + Sync + 'static;
 }
 
 /// A complete introspection client that owns a
@@ -157,15 +158,14 @@ impl<P, M, C> AsyncTokenInfoService for AsyncTokenInfoServiceClient<P, M, C>
 where
     P: TokenInfoParser + Clone + Send + 'static,
     M: MetricsCollector + Clone + Send + 'static,
-    C: Connect + Send + 'static,
+    C: Connect + Clone + Send + Sync + 'static,
 {
     fn introspect(
         &self,
         token: &AccessToken,
-    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static> {
+    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>> {
         let start = Instant::now();
         self.metrics_collector.incoming_introspection_request();
-
         let metrics_collector = self.metrics_collector.clone();
         let f = execute_once(
             self.http_client.clone(),
@@ -174,7 +174,7 @@ where
             self.parser.clone(),
             self.metrics_collector.clone(),
         )
-        .then(move |result| {
+        .map(move |result| {
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
@@ -187,14 +187,14 @@ where
             }
             result
         });
-        Box::new(f)
+        f.boxed()
     }
 
     fn introspect_with_retry(
         &self,
         token: &AccessToken,
         budget: Duration,
-    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static> {
+    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>> {
         let start = Instant::now();
         self.metrics_collector.incoming_introspection_request();
 
@@ -207,7 +207,7 @@ where
             budget,
             self.metrics_collector.clone(),
         )
-        .then(move |result| {
+        .map(move |result| {
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
@@ -220,7 +220,7 @@ where
             }
             result
         });
-        Box::new(f)
+        f.boxed()
     }
 }
 
@@ -324,7 +324,7 @@ where
         executor: E,
     ) -> InitializationResult<AsyncTokenInfoServiceClient<P, M, HttpsConnector<HttpConnector>>>
     where
-        E: Executor<Box<Future<Item = (), Error = ()> + Send + 'static>> + Send + Sync + 'static,
+        E: Executor<BoxFuture<'static, ()>> + Send + Sync + 'static,
     {
         let http_client = default_http_client_with_executor(num_dns_threads, executor)?;
 
@@ -334,7 +334,7 @@ where
 
 /// Creates a default HTTPS client with the given number of threads for DNS resolving
 pub fn default_http_client(num_dns_threads: usize) -> Result<HttpClient, InitializationError> {
-    let https = HttpsConnector::new(num_dns_threads)?;
+    let https = HttpsConnector::new();
     let http_client = ::hyper::Client::builder()
         .http1_writev(false)
         .build::<_, Body>(https);
@@ -348,9 +348,9 @@ pub fn default_http_client_with_executor<E>(
     executor: E,
 ) -> Result<HttpClient, InitializationError>
 where
-    E: Executor<Box<Future<Item = (), Error = ()> + Send + 'static>> + Send + Sync + 'static,
+    E: Executor<BoxFuture<'static, ()>> + Send + Sync + 'static,
 {
-    let https = HttpsConnector::new(num_dns_threads)?;
+    let https = HttpsConnector::new();
     let http_client = ::hyper::Client::builder()
         .http1_writev(false)
         .executor(executor)
@@ -367,9 +367,9 @@ where
         &self,
         token: &AccessToken,
         http_client: &Client<C>,
-    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static>
+    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
     where
-        C: Connect + Send + 'static,
+        C: Connect + Clone + Send + Sync + 'static,
     {
         let start = Instant::now();
         self.metrics_collector.incoming_introspection_request();
@@ -382,7 +382,7 @@ where
             self.parser.clone(),
             self.metrics_collector.clone(),
         )
-        .then(move |result| {
+        .map(move |result| {
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
@@ -395,7 +395,7 @@ where
             }
             result
         });
-        Box::new(f)
+        f.boxed()
     }
 
     fn introspect_with_retry<C>(
@@ -403,9 +403,9 @@ where
         token: &AccessToken,
         budget: Duration,
         http_client: &Client<C>,
-    ) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static>
+    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
     where
-        C: Connect + Send + 'static,
+        C: Connect + Clone + Send + Sync + 'static,
     {
         let start = Instant::now();
         self.metrics_collector.incoming_introspection_request();
@@ -419,7 +419,7 @@ where
             budget,
             self.metrics_collector.clone(),
         )
-        .then(move |result| {
+        .map(move |result| {
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_request(start);
@@ -432,29 +432,28 @@ where
             }
             result
         });
-        Box::new(f)
+        f.boxed()
     }
 }
 
 fn process_response<P>(
     response: Response<Body>,
     parser: P,
-) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static>
+) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
 where
     P: TokenInfoParser + Clone + Send + 'static,
 {
     let status = response.status();
-    let f = response
-        .into_body()
+    let body = response.into_body();
+    let f = hyper::body::to_bytes(body)
         .map_err(|err| TokenInfoErrorKind::Io(format!("Could not get body chunks: {}", err)))
-        .concat2()
         .and_then(move |body| {
             if status == StatusCode::OK {
                 let result = match parser.parse(&body) {
-                    Ok(info) => Ok(info),
+                    Ok(info) => future::ok(info),
                     Err(err) => {
                         let msg: String = String::from_utf8_lossy(&body).into();
-                        Err(TokenInfoErrorKind::InvalidResponseContent(format!(
+                        future::err(TokenInfoErrorKind::InvalidResponseContent(format!(
                             "{}: {}",
                             err, msg
                         )))
@@ -463,24 +462,24 @@ where
                 result
             } else if status == StatusCode::UNAUTHORIZED {
                 let msg = String::from_utf8_lossy(&body);
-                Err(TokenInfoErrorKind::NotAuthenticated(format!(
+                future::err(TokenInfoErrorKind::NotAuthenticated(format!(
                     "The server refused the token: {}",
                     msg
                 )))
             } else if status.is_client_error() {
                 let msg = String::from_utf8_lossy(&body).into();
-                Err(TokenInfoErrorKind::Client(msg))
+                future::err(TokenInfoErrorKind::Client(msg))
             } else if status.is_server_error() {
                 let msg = String::from_utf8_lossy(&body).into();
-                Err(TokenInfoErrorKind::Server(msg))
+                future::err(TokenInfoErrorKind::Server(msg))
             } else {
                 let msg = String::from_utf8_lossy(&body).into();
-                Err(TokenInfoErrorKind::Other(msg))
+                future::err(TokenInfoErrorKind::Other(msg))
             }
         })
         .map_err(Into::into);
 
-    Box::new(f)
+    f.boxed()
 }
 
 fn execute_with_retry<M, P, C>(
@@ -490,16 +489,16 @@ fn execute_with_retry<M, P, C>(
     parser: P,
     budget: Duration,
     metrics_collector: M,
-) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static>
+) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
 where
     P: TokenInfoParser + Clone + Send + 'static,
     M: MetricsCollector + Clone + Send + 'static,
-    C: Connect + Send + 'static,
+    C: Connect + Clone + Send + Sync + 'static,
 {
     if budget == Duration::from_secs(0) {
-        return Box::new(future::err(
+        return future::err(
             TokenInfoErrorKind::Other("Initial reuest budget was 0".into()).into(),
-        ));
+        ).boxed();
     }
 
     let deadline = Instant::now() + budget;
@@ -522,7 +521,7 @@ where
                 metrics_collector.clone(),
             )
         } else {
-            Box::new(future::err(TokenInfoErrorKind::BudgetExceeded.into()))
+            future::err(TokenInfoErrorKind::BudgetExceeded.into()).boxed()
         }
     };
 
@@ -536,15 +535,9 @@ where
         Instant::now() <= deadline && err.is_retry_suggested()
     };
 
-    let future =
-        RetryIf::spawn(retry_strategy, action, condition).map_err(|retry_err| match retry_err {
-            ::tokio_retry::Error::OperationError(op_err) => op_err,
-            ::tokio_retry::Error::TimerError(err) => {
-                TokenInfoErrorKind::Io(format!("Retry Timer Error: {} ", err)).into()
-            }
-        });
+    let future = RetryIf::spawn(retry_strategy, action, condition);
 
-    Box::new(future)
+    future.boxed()
 }
 
 fn execute_once<P, M, C>(
@@ -553,16 +546,16 @@ fn execute_once<P, M, C>(
     url_prefix: &str,
     parser: P,
     metrics_collector: M,
-) -> Box<Future<Item = TokenInfo, Error = TokenInfoError> + Send + 'static>
+) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
 where
     P: TokenInfoParser + Clone + Send + 'static,
     M: MetricsCollector + Send + 'static,
-    C: Connect + Send + 'static,
+    C: Connect + Clone + Send + Sync + 'static,
 {
     let start = Instant::now();
-    let f = future::result(complete_url(url_prefix, &token))
+    let f = future::ready(complete_url(url_prefix, &token))
         .and_then(move |uri| client.get(uri).map_err(Into::into))
-        .then(move |result| {
+        .map(move |result| {
             match result {
                 Ok(_) => {
                     metrics_collector.introspection_service_call(start);
@@ -576,7 +569,7 @@ where
             result
         })
         .and_then(|response| process_response(response, parser));
-    Box::new(f)
+    f.boxed()
 }
 
 fn complete_url(url_prefix: &str, token: &AccessToken) -> TokenInfoResult<Uri> {
@@ -584,12 +577,6 @@ fn complete_url(url_prefix: &str, token: &AccessToken) -> TokenInfoResult<Uri> {
     url_str.push_str(token.0.as_ref());
     let url = url_str.parse()?;
     Ok(url)
-}
-
-impl From<::hyper_tls::Error> for InitializationError {
-    fn from(err: ::hyper_tls::Error) -> Self {
-        InitializationError(format!("Could not initialize hyper_tls: {}", err))
-    }
 }
 
 impl From<::hyper::error::Error> for TokenInfoError {

@@ -8,7 +8,9 @@ use std::time::Duration;
 
 use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
 use failure::ResultExt;
-use reqwest::{Client, Response, StatusCode, Url, UrlError};
+use reqwest::{StatusCode, Url};
+use reqwest::blocking::{Client, Response};
+use url::ParseError;
 
 use parsers::*;
 use {AccessToken, InitializationError, InitializationResult, TokenInfo};
@@ -479,8 +481,8 @@ fn process_response(
     }
 }
 
-impl From<UrlError> for TokenInfoError {
-    fn from(what: UrlError) -> Self {
+impl From<ParseError> for TokenInfoError {
+    fn from(what: ParseError) -> Self {
         TokenInfoErrorKind::UrlError(what.to_string()).into()
     }
 }

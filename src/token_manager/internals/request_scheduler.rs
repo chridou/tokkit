@@ -214,6 +214,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn initial_state_is_correct() {
         let rows = create_token_rows();
         let row = rows[0].lock().unwrap();

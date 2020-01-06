@@ -8,7 +8,8 @@ use std::time::Duration;
 use json;
 use json::*;
 use reqwest::header::*;
-use reqwest::{Client, Error as RError, Response, StatusCode};
+use reqwest::{Error as RError, StatusCode};
+use reqwest::blocking::{Client, Response};
 use url::form_urlencoded;
 
 use self::credentials::{CredentialsProvider, RequestTokenCredentials};
