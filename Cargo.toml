@@ -16,8 +16,6 @@ edition = "2018"
 backoff = "0.1"
 failure = "0.1"
 futures = { version = "0.3", optional = true }
-hyper = { version = "0.13", optional = true }
-hyper-tls = { version = "0.4", optional = true }
 json = "0.12"
 log = "0.4"
 metrix = { version = "0.10", optional = true }
@@ -29,4 +27,4 @@ url = "2.1"
 env_logger = "0.7"
 
 [features]
-async = ["hyper", "tokio-retry", "futures", "hyper-tls"]
+async = ["tokio-retry", "futures"]

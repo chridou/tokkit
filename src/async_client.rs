@@ -3,11 +3,7 @@ use std::time::{Duration, Instant};
 
 use futures::*;
 use futures::future::{self, BoxFuture};
-use hyper::client::connect::Connect;
-use hyper::client::HttpConnector;
-use hyper::rt::Executor;
-use hyper::{Body, Client, Response, StatusCode, Uri};
-use hyper_tls::HttpsConnector;
+use reqwest::{Client, Response, StatusCode, Url};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::RetryIf;
 
@@ -17,7 +13,7 @@ use crate::parsers::*;
 use crate::{AccessToken, InitializationError, InitializationResult, TokenInfo};
 use crate::{TokenInfoError, TokenInfoErrorKind, TokenInfoResult};
 
-pub type HttpClient = Client<HttpsConnector<HttpConnector>, Body>;
+pub type HttpClient = Client;
 
 /// Gives a `TokenInfo` for an `AccessToken`.
 ///
@@ -47,25 +43,21 @@ pub trait AsyncTokenInfoService {
 /// See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
 pub trait AsyncTokenInfoServiceLight {
     /// Gives a `TokenInfo` for an `AccessToken`.
-    fn introspect<C>(
+    fn introspect(
         &self,
         token: &AccessToken,
-        http_client: &Client<C, Body>,
-    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
-    where
-        C: Connect + Clone + Send + Sync + 'static;
+        http_client: &Client,
+    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>;
     /// Gives a `TokenInfo` for an `AccessToken` with retries.
     ///
     /// `budget` defines the duration the retries may take
     /// until the whole call is considered a failure.
-    fn introspect_with_retry<C>(
+    fn introspect_with_retry(
         &self,
         token: &AccessToken,
         budget: Duration,
-        http_client: &Client<C, Body>,
-    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
-    where
-        C: Connect + Clone + Send + Sync + 'static;
+        http_client: &Client,
+    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>;
 }
 
 /// A complete introspection client that owns a
@@ -77,27 +69,26 @@ pub trait AsyncTokenInfoServiceLight {
 /// * `AsyncTokenInfoServiceClientLight::with_client`
 /// * `AsyncTokenInfoServiceClientLight::with_default_client`
 #[derive(Clone)]
-pub struct AsyncTokenInfoServiceClient<P, M, C = HttpsConnector<HttpConnector>> {
+pub struct AsyncTokenInfoServiceClient<P, M> {
     url_prefix: Arc<String>,
     fallback_url_prefix: Option<Arc<String>>,
-    http_client: Client<C, Body>,
+    http_client: Client,
     parser: P,
     metrics_collector: M,
 }
 
-impl<P, M, C> AsyncTokenInfoServiceClient<P, M, C>
+impl<P, M> AsyncTokenInfoServiceClient<P, M>
 where
     P: TokenInfoParser + Clone + Send + 'static,
     M: MetricsCollector + Clone + Send + 'static,
-    C: Connect + Send + 'static,
 {
     pub fn new(
-        http_client: Client<C, Body>,
+        http_client: Client,
         endpoint: &str,
         query_parameter: Option<&str>,
         fallback_endpoint: Option<&str>,
         parser: P,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, DevNullMetricsCollector, C>> {
+    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, DevNullMetricsCollector>> {
         AsyncTokenInfoServiceClient::with_metrics(
             http_client,
             endpoint,
@@ -109,13 +100,13 @@ where
     }
 
     pub fn with_metrics(
-        http_client: Client<C, Body>,
+        http_client: Client,
         endpoint: &str,
         query_parameter: Option<&str>,
         fallback_endpoint: Option<&str>,
         parser: P,
         metrics_collector: M,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, M, C>> {
+    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, M>> {
         let url_prefix = assemble_url_prefix(endpoint, &query_parameter)
             .map_err(|err| InitializationError(err))?;
 
@@ -138,12 +129,12 @@ where
     }
 
     fn create(
-        http_client: Client<C, Body>,
+        http_client: Client,
         url_prefix: Arc<String>,
         fallback_url_prefix: Option<Arc<String>>,
         parser: P,
         metrics_collector: M,
-    ) -> AsyncTokenInfoServiceClient<P, M, C> {
+    ) -> AsyncTokenInfoServiceClient<P, M> {
         AsyncTokenInfoServiceClient {
             url_prefix,
             fallback_url_prefix,
@@ -154,11 +145,10 @@ where
     }
 }
 
-impl<P, M, C> AsyncTokenInfoService for AsyncTokenInfoServiceClient<P, M, C>
+impl<P, M> AsyncTokenInfoService for AsyncTokenInfoServiceClient<P, M>
 where
     P: TokenInfoParser + Clone + Send + 'static,
     M: MetricsCollector + Clone + Send + 'static,
-    C: Connect + Clone + Send + Sync + 'static,
 {
     fn introspect(
         &self,
@@ -296,13 +286,10 @@ where
     }
 
     /// Creates an `AsyncTokenInfoService` with the given HttpClient
-    pub fn with_client<C>(
+    pub fn with_client(
         &self,
-        http_client: Client<C, Body>,
-    ) -> AsyncTokenInfoServiceClient<P, M, C>
-    where
-        C: Connect + Send + 'static,
-    {
+        http_client: Client,
+    ) -> AsyncTokenInfoServiceClient<P, M> {
         AsyncTokenInfoServiceClient::create(
             http_client,
             self.url_prefix.clone(),
@@ -314,57 +301,19 @@ where
 
     /// Creates an `AsyncTokenInfoService` with a default client using
     /// the given number of threads to do DNS resolving
-    pub fn with_default_client(
-        &self,
-        num_dns_threads: usize,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, M, HttpsConnector<HttpConnector>>>
+    pub fn with_default_client(&self) -> InitializationResult<AsyncTokenInfoServiceClient<P, M>>
     {
-        let http_client = default_http_client(num_dns_threads)?;
-
-        Ok(self.with_client(http_client))
-    }
-
-    /// Creates an `AsyncTokenInfoService` with a default client using
-    /// the given number of threads to do DNS resolving and using
-    /// the given `Executor`
-    pub fn with_default_client_and_executor<E>(
-        &self,
-        num_dns_threads: usize,
-        executor: E,
-    ) -> InitializationResult<AsyncTokenInfoServiceClient<P, M, HttpsConnector<HttpConnector>>>
-    where
-        E: Executor<BoxFuture<'static, ()>> + Send + Sync + 'static,
-    {
-        let http_client = default_http_client_with_executor(num_dns_threads, executor)?;
+        let http_client = default_http_client()?;
 
         Ok(self.with_client(http_client))
     }
 }
 
-/// Creates a default HTTPS client with the given number of threads for DNS resolving
-pub fn default_http_client(num_dns_threads: usize) -> Result<HttpClient, InitializationError> {
-    let https = HttpsConnector::new();
-    let http_client = ::hyper::Client::builder()
-        .http1_writev(false)
-        .build::<_, Body>(https);
-    Ok(http_client)
-}
-
-/// Creates a default HTTPS client with the given number of
-/// threads for DNS resolving using the given `Executor`
-pub fn default_http_client_with_executor<E>(
-    num_dns_threads: usize,
-    executor: E,
-) -> Result<HttpClient, InitializationError>
-where
-    E: Executor<BoxFuture<'static, ()>> + Send + Sync + 'static,
-{
-    let https = HttpsConnector::new();
-    let http_client = ::hyper::Client::builder()
-        .http1_writev(false)
-        .executor(executor)
-        .build::<_, Body>(https);
-    Ok(http_client)
+/// Creates a default HTTPS client
+pub fn default_http_client() -> Result<HttpClient, InitializationError> {
+    Client::builder()
+        .build()
+        .map_err(|err| InitializationError(err.to_string()))
 }
 
 impl<P, M> AsyncTokenInfoServiceLight for AsyncTokenInfoServiceClientLight<P, M>
@@ -372,14 +321,11 @@ where
     P: TokenInfoParser + Clone + Send + 'static,
     M: MetricsCollector + Clone + Send + 'static,
 {
-    fn introspect<C>(
+    fn introspect(
         &self,
         token: &AccessToken,
-        http_client: &Client<C>,
-    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
-    where
-        C: Connect + Clone + Send + Sync + 'static,
-    {
+        http_client: &Client,
+    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>> {
         let start = Instant::now();
         self.metrics_collector.incoming_introspection_request();
 
@@ -411,15 +357,12 @@ where
         .boxed()
     }
 
-    fn introspect_with_retry<C>(
+    fn introspect_with_retry(
         &self,
         token: &AccessToken,
         budget: Duration,
-        http_client: &Client<C>,
-    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
-    where
-        C: Connect + Clone + Send + Sync + 'static,
-    {
+        http_client: &Client,
+    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>> {
         let start = Instant::now();
         self.metrics_collector.incoming_introspection_request();
 
@@ -454,17 +397,16 @@ where
 }
 
 fn process_response<P>(
-    response: Response<Body>,
+    response: Response,
     parser: P,
 ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
 where
     P: TokenInfoParser + Clone + Send + 'static,
 {
     let status = response.status();
-    let body = response.into_body();
 
     async move {
-        let body = hyper::body::to_bytes(body).await
+        let body = response.bytes().await
             .map_err(|err| TokenInfoErrorKind::Io(format!("Could not get body chunks: {}", err)))?;
 
         if status == StatusCode::OK {
@@ -499,8 +441,8 @@ where
     .boxed()
 }
 
-fn execute_with_retry<M, P, C>(
-    http_client: &Client<C, Body>,
+fn execute_with_retry<M, P>(
+    http_client: &Client,
     token: AccessToken,
     url_prefix: &str,
     parser: P,
@@ -510,7 +452,6 @@ fn execute_with_retry<M, P, C>(
 where
     P: TokenInfoParser + Clone + Send + 'static,
     M: MetricsCollector + Clone + Send + 'static,
-    C: Connect + Clone + Send + Sync + 'static,
 {
     if budget == Duration::from_secs(0) {
         return future::err(
@@ -555,8 +496,8 @@ where
     future.boxed()
 }
 
-fn execute_once<P, M, C>(
-    client: Client<C, Body>,
+fn execute_once<P, M>(
+    client: Client,
     token: AccessToken,
     url_prefix: &str,
     parser: P,
@@ -565,7 +506,6 @@ fn execute_once<P, M, C>(
 where
     P: TokenInfoParser + Clone + Send + 'static,
     M: MetricsCollector + Send + 'static,
-    C: Connect + Clone + Send + Sync + 'static,
 {
     let start = Instant::now();
     let uri = complete_url(url_prefix, &token);
@@ -573,7 +513,7 @@ where
     async move {
         let uri = uri?;
 
-        match client.get(uri).await {
+        match client.get(uri).send().await {
             Ok(response) => {
                 metrics_collector.introspection_service_call(start);
                 metrics_collector.introspection_service_call_success(start);
@@ -588,21 +528,15 @@ where
     }
 }
 
-fn complete_url(url_prefix: &str, token: &AccessToken) -> TokenInfoResult<Uri> {
+fn complete_url(url_prefix: &str, token: &AccessToken) -> TokenInfoResult<Url> {
     let mut url_str = url_prefix.to_string();
     url_str.push_str(token.0.as_ref());
     let url = url_str.parse()?;
     Ok(url)
 }
 
-impl From<::hyper::error::Error> for TokenInfoError {
-    fn from(err: ::hyper::error::Error) -> Self {
+impl From<reqwest::Error> for TokenInfoError {
+    fn from(err: reqwest::Error) -> Self {
         TokenInfoErrorKind::Other(err.to_string()).into()
-    }
-}
-
-impl From<hyper::http::uri::InvalidUri> for TokenInfoError {
-    fn from(err: hyper::http::uri::InvalidUri) -> Self {
-        TokenInfoErrorKind::UrlError(err.to_string()).into()
     }
 }
