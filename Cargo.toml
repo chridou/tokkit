@@ -16,7 +16,6 @@ edition = "2018"
 backoff = "0.1"
 failure = "0.1"
 futures = { version = "0.3", optional = true }
-http = { version = "0.2", optional = true }
 hyper = { version = "0.13", optional = true }
 hyper-tls = { version = "0.4", optional = true }
 json = "0.12"
@@ -30,4 +29,4 @@ url = "2.1"
 env_logger = "0.7"
 
 [features]
-async = ["hyper", "tokio-retry", "futures", "hyper-tls", "http"]
+async = ["hyper", "tokio-retry", "futures", "hyper-tls"]
