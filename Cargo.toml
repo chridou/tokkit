@@ -14,17 +14,17 @@ edition = "2018"
 
 [dependencies]
 backoff = "0.1"
+backoff-futures = { version = "0.2", optional = true }
 failure = "0.1"
 futures = { version = "0.3", optional = true }
 json = "0.12"
 log = "0.4"
 metrix = { version = "0.10", optional = true }
 reqwest = { version = "0.10", features = ["blocking"] }
-tokio-retry = { version = "0.2", optional = true, git = "https://github.com/omnioiot/rust-tokio-retry", rev = "732c33d" }
 url = "2.1"
 
 [dev-dependencies]
 env_logger = "0.7"
 
 [features]
-async = ["tokio-retry", "futures"]
+async = ["futures", "backoff-futures"]

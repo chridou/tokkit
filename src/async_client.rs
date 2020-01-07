@@ -1,11 +1,10 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use backoff_futures::BackoffExt;
 use futures::*;
 use futures::future::{self, BoxFuture};
 use reqwest::{Client, Response, StatusCode, Url};
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
-use tokio_retry::RetryIf;
 
 use crate::client::assemble_url_prefix;
 use crate::metrics::{DevNullMetricsCollector, MetricsCollector};
@@ -147,8 +146,8 @@ where
 
 impl<P, M> AsyncTokenInfoService for AsyncTokenInfoServiceClient<P, M>
 where
-    P: TokenInfoParser + Clone + Send + 'static,
-    M: MetricsCollector + Clone + Send + 'static,
+    P: TokenInfoParser + Clone + Send + Unpin + 'static,
+    M: MetricsCollector + Clone + Send + Unpin + 'static,
 {
     fn introspect(
         &self,
@@ -318,8 +317,8 @@ pub fn default_http_client() -> Result<HttpClient, InitializationError> {
 
 impl<P, M> AsyncTokenInfoServiceLight for AsyncTokenInfoServiceClientLight<P, M>
 where
-    P: TokenInfoParser + Clone + Send + 'static,
-    M: MetricsCollector + Clone + Send + 'static,
+    P: TokenInfoParser + Clone + Send + Unpin + 'static,
+    M: MetricsCollector + Clone + Send + Unpin + 'static,
 {
     fn introspect(
         &self,
@@ -450,8 +449,8 @@ fn execute_with_retry<M, P>(
     metrics_collector: M,
 ) -> impl Future<Output = Result<TokenInfo, TokenInfoError>> + Send + 'static
 where
-    P: TokenInfoParser + Clone + Send + 'static,
-    M: MetricsCollector + Clone + Send + 'static,
+    P: TokenInfoParser + Clone + Send + Unpin + 'static,
+    M: MetricsCollector + Clone + Send + Unpin + 'static,
 {
     if budget == Duration::from_secs(0) {
         return future::err(
@@ -464,36 +463,52 @@ where
 
     let url_prefix = url_prefix.to_string();
 
-    let retry_strategy = ExponentialBackoff::from_millis(10).map(jitter);
+    let mut backoff = backoff::ExponentialBackoff::default();
+    backoff.max_elapsed_time = Some(Duration::from_millis(200));
+    backoff.initial_interval = Duration::from_millis(10);
+    backoff.multiplier = 1.5;
+
+    let mut attempt = 1;
 
     let action = move || {
-        if Instant::now() <= deadline {
-            execute_once(
-                http_client.clone(),
-                token.clone(),
-                &url_prefix.clone(),
-                parser.clone(),
-                metrics_collector.clone(),
-            )
-            .boxed()
-        } else {
-            future::err(TokenInfoErrorKind::BudgetExceeded.into()).boxed()
+        let execution_result = execute_once(
+            http_client.clone(),
+            token.clone(),
+            &url_prefix.clone(),
+            parser.clone(),
+            metrics_collector.clone(),
+        );
+
+        async move {
+            let result = if Instant::now() <= deadline {
+                execution_result.await
+            } else {
+                Err(TokenInfoErrorKind::BudgetExceeded.into())
+            };
+
+            result.map_err(|err| {
+                warn!(
+                    "Attempt({}) on token introspection service. Reason: {}",
+                    attempt, err
+                );
+                attempt += 1;
+
+                if Instant::now() <= deadline && err.is_retry_suggested() {
+                    backoff::Error::Transient(err)
+                } else {
+                    backoff::Error::Permanent(err)
+                }
+            })
         }
     };
 
-    let mut n = 1;
-    let condition = move |err: &TokenInfoError| {
-        warn!(
-            "Retry({}) on token introspection service. Reason: {}",
-            n, err
-        );
-        n += 1;
-        Instant::now() <= deadline && err.is_retry_suggested()
-    };
-
-    let future = RetryIf::spawn(retry_strategy, action, condition);
-
-    future.boxed()
+    async move {
+        action.with_backoff(&mut backoff).await.map_err(|err| match err {
+            backoff::Error::Transient(err) => err,
+            backoff::Error::Permanent(err) => err,
+        })
+    }
+    .boxed()
 }
 
 fn execute_once<P, M>(
