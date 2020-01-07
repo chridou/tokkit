@@ -93,7 +93,7 @@ impl<T: Eq + Send + Clone + Display> ManagedTokenBuilder<T> {
 fn split_scopes(input: &str) -> Vec<Scope> {
     input
         .split(' ')
-        .filter(|s| s.len() > 0)
+        .filter(|s| !s.is_empty())
         .map(Scope::new)
         .collect()
 }
@@ -240,7 +240,7 @@ impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + Send + Sync + 'sta
         }
 
         Ok(ManagedTokenGroup {
-            token_provider: token_provider,
+            token_provider,
             managed_tokens: self.managed_tokens,
             refresh_threshold: self.refresh_threshold,
             warning_threshold: self.warning_threshold,
@@ -265,7 +265,7 @@ impl<T: Eq + Send + Clone + Display, S: AccessTokenProvider + 'static> Default
 /// server
 pub struct ManagedTokenGroup<T> {
     /// The
-    pub token_provider: Arc<AccessTokenProvider + Send + Sync + 'static>,
+    pub token_provider: Arc<dyn AccessTokenProvider + Send + Sync + 'static>,
     pub managed_tokens: Vec<ManagedToken<T>>,
     pub refresh_threshold: f32,
     pub warning_threshold: f32,
@@ -358,7 +358,7 @@ impl<T: Eq + Ord + Clone + Display> AccessTokenSource<T> {
     pub fn new_detached(tokens: &[(T, AccessToken)]) -> AccessTokenSource<T> {
         let mut tokens_map = BTreeMap::new();
 
-        for (i, &(ref id, ref token)) in tokens.into_iter().enumerate() {
+        for (i, (id, token)) in tokens.iter().enumerate() {
             let item = (i, Mutex::new(Ok(token.clone())));
             tokens_map.insert(id.clone(), item);
         }
@@ -376,9 +376,9 @@ impl<T: Eq + Ord + Clone + Display> AccessTokenSource<T> {
 impl<T: Eq + Ord + Clone + Display> GivesAccessTokensById<T> for AccessTokenSource<T> {
     fn get_access_token(&self, token_id: &T) -> TokenResult<AccessToken> {
         match self.tokens.get(&token_id) {
-            Some(&(_, ref guard)) => match &*guard.lock().unwrap() {
-                &Ok(ref token) => Ok(token.clone()),
-                &Err(ref err) => return Err(err.clone().into()),
+            Some((_, guard)) => match &*guard.lock().unwrap() {
+                Ok(token) => Ok(token.clone()),
+                Err(err) => Err(err.clone().into()),
             },
             None => Err(TokenErrorKind::NoToken(token_id.to_string()).into()),
         }
@@ -433,7 +433,7 @@ impl<T: Eq + Ord + Clone + Display> AccessTokenSourceSync<T> {
     pub fn new_detached(tokens: &[(T, AccessToken)]) -> AccessTokenSourceSync<T> {
         let mut tokens_map = BTreeMap::new();
 
-        for (i, &(ref id, ref token)) in tokens.into_iter().enumerate() {
+        for (i, (id, token)) in tokens.iter().enumerate() {
             let item = (i, Mutex::new(Ok(token.clone())));
             tokens_map.insert(id.clone(), item);
         }
@@ -451,11 +451,11 @@ impl<T: Eq + Ord + Clone + Display> AccessTokenSourceSync<T> {
 impl<T: Eq + Ord + Clone + Display> GivesAccessTokensById<T> for AccessTokenSourceSync<T> {
     fn get_access_token(&self, token_id: &T) -> TokenResult<AccessToken> {
         match self.tokens.get(&token_id) {
-            Some(&(_, ref guard)) => match &*guard.lock().unwrap() {
-                &Ok(ref token) => Ok(token.clone()),
-                &Err(ref err) => return Err(err.clone().into()),
+            Some((_, guard)) => match &*guard.lock().unwrap() {
+                Ok(token) => Ok(token.clone()),
+                Err(err) => Err(err.clone().into()),
             },
-            None => return Err(TokenErrorKind::NoToken(token_id.to_string()).into()),
+            None => Err(TokenErrorKind::NoToken(token_id.to_string()).into()),
         }
     }
 

@@ -206,7 +206,7 @@ impl TokenInfo {
     /// Use for authorization. Checks whether this `TokenInfo` has the given
     /// `Scope`.
     pub fn has_scope(&self, scope: &Scope) -> bool {
-        self.scope.iter().find(|&s| s == scope).is_some()
+        self.scope.iter().any(|s| s == scope)
     }
 
     /// Use for authorization. Checks whether this `TokenInfo` has all of the

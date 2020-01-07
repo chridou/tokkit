@@ -76,10 +76,9 @@ pub struct AsyncTokenInfoServiceClient<P, M> {
     metrics_collector: M,
 }
 
-impl<P, M> AsyncTokenInfoServiceClient<P, M>
+impl<P> AsyncTokenInfoServiceClient<P, DevNullMetricsCollector>
 where
     P: TokenInfoParser + Send,
-    M: MetricsCollector + Send,
 {
     pub fn new(
         http_client: Client,
@@ -97,7 +96,13 @@ where
             DevNullMetricsCollector,
         )
     }
+}
 
+impl<P, M> AsyncTokenInfoServiceClient<P, M>
+where
+    P: TokenInfoParser + Send,
+    M: MetricsCollector + Send,
+{
     pub fn with_metrics(
         http_client: Client,
         endpoint: &str,
@@ -107,12 +112,12 @@ where
         metrics_collector: M,
     ) -> InitializationResult<AsyncTokenInfoServiceClient<P, M>> {
         let url_prefix = assemble_url_prefix(endpoint, &query_parameter)
-            .map_err(|err| InitializationError(err))?;
+            .map_err(InitializationError)?;
 
         let fallback_url_prefix = if let Some(fallback_endpoint_address) = fallback_endpoint {
             Some(
                 assemble_url_prefix(fallback_endpoint_address, &query_parameter)
-                    .map_err(|err| InitializationError(err))?,
+                    .map_err(InitializationError)?,
             )
         } else {
             None
@@ -120,9 +125,9 @@ where
 
         Ok(AsyncTokenInfoServiceClient {
             url_prefix: Arc::new(url_prefix),
-            fallback_url_prefix: fallback_url_prefix.map(|fb| Arc::new(fb)),
-            parser: parser,
-            metrics_collector: metrics_collector,
+            fallback_url_prefix: fallback_url_prefix.map(Arc::new),
+            parser,
+            metrics_collector,
             http_client,
         })
     }
@@ -233,10 +238,9 @@ pub struct AsyncTokenInfoServiceClientLight<P, M> {
     metrics_collector: M,
 }
 
-impl<P, M> AsyncTokenInfoServiceClientLight<P, M>
+impl<P> AsyncTokenInfoServiceClientLight<P, DevNullMetricsCollector>
 where
     P: TokenInfoParser + Send,
-    M: MetricsCollector + Send,
 {
     pub fn new(
         endpoint: &str,
@@ -252,7 +256,13 @@ where
             DevNullMetricsCollector,
         )
     }
+}
 
+impl<P, M> AsyncTokenInfoServiceClientLight<P, M>
+where
+    P: TokenInfoParser + Send,
+    M: MetricsCollector + Send,
+{
     pub fn with_metrics(
         endpoint: &str,
         query_parameter: Option<&str>,
@@ -261,12 +271,12 @@ where
         metrics_collector: M,
     ) -> InitializationResult<AsyncTokenInfoServiceClientLight<P, M>> {
         let url_prefix = assemble_url_prefix(endpoint, &query_parameter)
-            .map_err(|err| InitializationError(err))?;
+            .map_err(InitializationError)?;
 
         let fallback_url_prefix = if let Some(fallback_endpoint_address) = fallback_endpoint {
             Some(
                 assemble_url_prefix(fallback_endpoint_address, &query_parameter)
-                    .map_err(|err| InitializationError(err))?,
+                    .map_err(InitializationError)?,
             )
         } else {
             None
@@ -274,9 +284,9 @@ where
 
         Ok(AsyncTokenInfoServiceClientLight {
             url_prefix: Arc::new(url_prefix),
-            fallback_url_prefix: fallback_url_prefix.map(|fb| Arc::new(fb)),
-            parser: parser,
-            metrics_collector: metrics_collector,
+            fallback_url_prefix: fallback_url_prefix.map(Arc::new),
+            parser,
+            metrics_collector,
         })
     }
 
@@ -392,10 +402,10 @@ where
     }
 }
 
-fn process_response<'a, P>(
+fn process_response<P>(
     response: Response,
-    parser: &'a P,
-) -> BoxFuture<'a, Result<TokenInfo, TokenInfoError>>
+    parser: &'_ P,
+) -> BoxFuture<'_, Result<TokenInfo, TokenInfoError>>
 where
     P: TokenInfoParser + Send + Sync,
 {

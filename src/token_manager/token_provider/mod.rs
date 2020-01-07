@@ -46,7 +46,7 @@ pub trait AccessTokenProvider {
 pub struct ResourceOwnerPasswordCredentialsGrantProvider {
     full_endpoint_url: String,
     client: Client,
-    credentials_provider: Box<CredentialsProvider + Send + Sync + 'static>,
+    credentials_provider: Box<dyn CredentialsProvider + Send + Sync + 'static>,
 }
 
 impl ResourceOwnerPasswordCredentialsGrantProvider {
@@ -66,8 +66,8 @@ impl ResourceOwnerPasswordCredentialsGrantProvider {
             full_endpoint_url.push_str(realm);
         }
         Ok(ResourceOwnerPasswordCredentialsGrantProvider {
-            full_endpoint_url: full_endpoint_url,
-            client: client,
+            full_endpoint_url,
+            client,
             credentials_provider: Box::new(credentials_provider),
         })
     }
@@ -87,7 +87,7 @@ impl ResourceOwnerPasswordCredentialsGrantProvider {
         C: CredentialsProvider + Send + Sync + 'static,
     {
         let endpoint_url: String = match env::var("TOKKIT_AUTHORIZATION_SERVER_URL") {
-            Ok(url) => url.into(),
+            Ok(url) => url,
             Err(VarError::NotPresent) => {
                 return Err(InitializationError(
                     "'TOKKIT_AUTHORIZATION_SERVER_URL' not found.".to_string(),
@@ -97,7 +97,7 @@ impl ResourceOwnerPasswordCredentialsGrantProvider {
         };
 
         let realm: Option<String> = match env::var("TOKKIT_AUTHORIZATION_SERVER_REALM") {
-            Ok(realm) => Some(realm.into()),
+            Ok(realm) => Some(realm),
             Err(VarError::NotPresent) => None,
             Err(err) => return Err(InitializationError(err.to_string())),
         };
@@ -126,7 +126,7 @@ impl AccessTokenProvider for ResourceOwnerPasswordCredentialsGrantProvider {
 }
 
 fn evaluate_response(rsp: &mut Response) -> AccessTokenProviderResult {
-    let status = rsp.status().clone();
+    let status = rsp.status();
     let mut body = Vec::new();
     rsp.read_to_end(&mut body)?;
     match status {
@@ -253,9 +253,9 @@ fn parse_response(bytes: &[u8], default_expires_in: Option<Duration>) -> AccessT
             refresh_token,
         })
     } else {
-        return Err(AccessTokenProviderError::Parse(
+        Err(AccessTokenProviderError::Parse(
             "Token service response is not a JSON object".to_string(),
-        ));
+        ))
     }
 }
 
@@ -305,9 +305,9 @@ fn parse_error(bytes: &[u8]) -> StdResult<AuthorizationRequestError, AccessToken
             error_uri,
         })
     } else {
-        return Err(AccessTokenProviderError::Parse(
+        Err(AccessTokenProviderError::Parse(
             "The response is not a JSON object".to_string(),
-        ));
+        ))
     }
 }
 

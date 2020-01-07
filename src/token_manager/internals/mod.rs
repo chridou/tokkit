@@ -127,11 +127,11 @@ pub struct Inner<T> {
 impl<T: Eq + Ord + Clone + Display> Inner<T> {
     pub fn get_access_token(&self, token_id: &T) -> TokenResult<AccessToken> {
         match self.tokens.get(&token_id) {
-            Some(&(_, ref guard)) => match &*guard.lock().unwrap() {
-                &Ok(ref token) => Ok(token.clone()),
-                &Err(ref err) => return Err(err.clone().into()),
+            Some((_, guard)) => match &*guard.lock().unwrap() {
+                Ok(token) => Ok(token.clone()),
+                Err(err) => Err(err.clone().into()),
             },
-            None => return Err(TokenErrorKind::NoToken(token_id.to_string()).into()),
+            None => Err(TokenErrorKind::NoToken(token_id.to_string()).into()),
         }
     }
 }
@@ -174,7 +174,7 @@ pub struct TokenRow<T> {
     scheduled_for: EpochMillis,
     token_state: TokenState,
     last_notification_at: Option<EpochMillis>,
-    token_provider: Arc<AccessTokenProvider + Send + Sync + 'static>,
+    token_provider: Arc<dyn AccessTokenProvider + Send + Sync + 'static>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -221,10 +221,10 @@ fn minus_millis(from: u64, subtract: u64) -> u64 {
     }
 }
 
-fn elapsed_millis_from(start_millis: u64, clock: &Clock) -> u64 {
+fn elapsed_millis_from(start_millis: u64, clock: &dyn Clock) -> u64 {
     diff_millis(start_millis, clock.now())
 }
 
 fn millis_from_duration(d: Duration) -> u64 {
-    (d.as_secs() * 1000) + (d.subsec_nanos() / 1_000_000) as u64
+    (d.as_secs() * 1000) + d.subsec_millis() as u64
 }

@@ -86,8 +86,8 @@ pub trait CredentialsProvider {
 pub struct SplitFileCredentialsProvider {
     client_credentials_file_path: PathBuf,
     owner_credentials_file_path: PathBuf,
-    client_credentials_parser: Box<ClientCredentialsParser + Send + Sync + 'static>,
-    owner_credentials_parser: Box<ResourceOwnerCredentialsParser + Send + Sync + 'static>,
+    client_credentials_parser: Box<dyn ClientCredentialsParser + Send + Sync + 'static>,
+    owner_credentials_parser: Box<dyn ResourceOwnerCredentialsParser + Send + Sync + 'static>,
 }
 
 impl SplitFileCredentialsProvider {
@@ -203,7 +203,7 @@ impl SplitFileCredentialsProvider {
     where
         P: ResourceOwnerCredentialsParser + Send + Sync + 'static,
     {
-        let credentials_dir = credentials_dir_from_env().map_err(|msg| InitializationError(msg))?;
+        let credentials_dir = credentials_dir_from_env().map_err(InitializationError)?;
 
         let owner_file_name: PathBuf = match env::var("TOKKIT_CREDENTIALS_RESOURCE_OWNER_FILENAME")
         {

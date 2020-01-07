@@ -161,7 +161,7 @@ impl Error for AccessTokenProviderError {
         }
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match *self {
             AccessTokenProviderError::Credentials(ref inner) => Some(inner),
             _ => None,

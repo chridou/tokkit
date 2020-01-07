@@ -312,12 +312,12 @@ impl TokenInfoServiceClient {
         P: TokenInfoParser + Sync + Send + 'static,
     {
         let url_prefix = assemble_url_prefix(endpoint, &query_parameter)
-            .map_err(|err| InitializationError(err))?;
+            .map_err(InitializationError)?;
 
         let fallback_url_prefix = if let Some(fallback_endpoint_address) = fallback_endpoint {
             Some(
                 assemble_url_prefix(fallback_endpoint_address, &query_parameter)
-                    .map_err(|err| InitializationError(err))?,
+                    .map_err(InitializationError)?,
             )
         } else {
             None
@@ -326,7 +326,7 @@ impl TokenInfoServiceClient {
         let client = Client::new();
         Ok(TokenInfoServiceClient {
             url_prefix: Arc::new(url_prefix),
-            fallback_url_prefix: fallback_url_prefix.map(|fb| Arc::new(fb)),
+            fallback_url_prefix: fallback_url_prefix.map(Arc::new),
             http_client: client,
             parser: Arc::new(parser),
         })
@@ -338,20 +338,21 @@ pub(crate) fn assemble_url_prefix(
     query_parameter: &Option<&str>,
 ) -> ::std::result::Result<String, String> {
     let mut url_prefix = String::from(endpoint);
-    if let &Some(query_parameter) = query_parameter {
+
+    if let Some(query_parameter) = query_parameter {
         if url_prefix.ends_with('/') {
             url_prefix.pop();
         }
         url_prefix.push_str(&format!("?{}=", query_parameter));
-    } else {
-        if !url_prefix.ends_with('/') {
-            url_prefix.push('/');
-        }
+    } else if !url_prefix.ends_with('/') {
+        url_prefix.push('/');
     }
+
     let test_url = format!("{}test_token", url_prefix);
     let _ = test_url
         .parse::<Url>()
         .map_err(|err| format!("Invalid URL: {}", err))?;
+
     Ok(url_prefix)
 }
 
@@ -398,11 +399,14 @@ fn get_with_fallback(
     })
 }
 
-fn get_from_remote(
+fn get_from_remote<P>(
     url: Url,
     http_client: &Client,
-    parser: &TokenInfoParser,
-) -> TokenInfoResult<TokenInfo> {
+    parser: &P,
+) -> TokenInfoResult<TokenInfo>
+where
+    P: TokenInfoParser + ?Sized,
+{
     let mut op = || match get_from_remote_no_retry(url.clone(), http_client, parser) {
         Ok(token_info) => Ok(token_info),
         Err(err) => match *err.kind() {
@@ -432,11 +436,14 @@ fn get_from_remote(
     }
 }
 
-fn get_from_remote_no_retry(
+fn get_from_remote_no_retry<P>(
     url: Url,
     http_client: &Client,
-    parser: &dyn TokenInfoParser,
-) -> TokenInfoResult<TokenInfo> {
+    parser: &P,
+) -> TokenInfoResult<TokenInfo>
+where
+    P: TokenInfoParser + ?Sized,
+{
     let request_builder = http_client.get(url);
     match request_builder.send() {
         Ok(ref mut response) => process_response(response, parser),
@@ -444,10 +451,13 @@ fn get_from_remote_no_retry(
     }
 }
 
-fn process_response(
+fn process_response<P>(
     response: &mut Response,
-    parser: &dyn TokenInfoParser,
-) -> TokenInfoResult<TokenInfo> {
+    parser: &P,
+) -> TokenInfoResult<TokenInfo>
+where
+    P: TokenInfoParser + ?Sized,
+{
     let mut body = Vec::new();
     response
         .read_to_end(&mut body)
@@ -464,20 +474,20 @@ fn process_response(
         Ok(result)
     } else if response.status() == StatusCode::UNAUTHORIZED {
         let msg = str::from_utf8(&body)?;
-        return Err(TokenInfoErrorKind::NotAuthenticated(format!(
+        Err(TokenInfoErrorKind::NotAuthenticated(format!(
             "The server refused the token: {}",
             msg
         ))
-        .into());
+        .into())
     } else if response.status().is_client_error() {
         let msg = str::from_utf8(&body)?;
-        return Err(TokenInfoErrorKind::Client(msg.to_string()).into());
+        Err(TokenInfoErrorKind::Client(msg.to_string()).into())
     } else if response.status().is_server_error() {
         let msg = str::from_utf8(&body)?;
-        return Err(TokenInfoErrorKind::Server(msg.to_string()).into());
+        Err(TokenInfoErrorKind::Server(msg.to_string()).into())
     } else {
         let msg = str::from_utf8(&body)?;
-        return Err(TokenInfoErrorKind::Other(msg.to_string()).into());
+        Err(TokenInfoErrorKind::Other(msg.to_string()).into())
     }
 }
 

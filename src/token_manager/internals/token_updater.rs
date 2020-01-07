@@ -10,7 +10,7 @@ pub struct TokenUpdater<'a, T: 'a> {
     tokens: &'a BTreeMap<T, (usize, Mutex<StdResult<AccessToken, TokenErrorKind>>)>,
     receiver: mpsc::Receiver<ManagerCommand<T>>,
     is_running: &'a AtomicBool,
-    clock: &'a Clock,
+    clock: &'a dyn Clock,
 }
 
 impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
@@ -19,7 +19,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> TokenUpdater<'a, T> {
         tokens: &'a BTreeMap<T, (usize, Mutex<StdResult<AccessToken, TokenErrorKind>>)>,
         receiver: mpsc::Receiver<ManagerCommand<T>>,
         is_running: &'a AtomicBool,
-        clock: &'a Clock,
+        clock: &'a dyn Clock,
     ) -> Self {
         TokenUpdater {
             rows,
@@ -151,11 +151,9 @@ fn update_token_ok<T: Display>(
     rsp: AuthorizationServerResponse,
     row: &mut TokenRow<T>,
     token: &Mutex<StdResult<AccessToken, TokenErrorKind>>,
-    clock: &Clock,
+    clock: &dyn Clock,
 ) {
-    {
-        *token.lock().unwrap() = Ok(rsp.access_token)
-    };
+    *token.lock().unwrap() = Ok(rsp.access_token);
     let now = clock.now();
     let expires_in_ms = millis_from_duration(rsp.expires_in);
     let old_last_touched = row.last_touched;
@@ -179,11 +177,9 @@ fn update_token_err<T: Display>(
     err: AccessTokenProviderError,
     row: &mut TokenRow<T>,
     token: &Mutex<StdResult<AccessToken, TokenErrorKind>>,
-    clock: &Clock,
+    clock: &dyn Clock,
 ) {
-    {
-        *token.lock().unwrap() = Err(TokenErrorKind::AccessTokenProvider(err.to_string()))
-    };
+    *token.lock().unwrap() = Err(TokenErrorKind::AccessTokenProvider(err.to_string()));
     let now = clock.now();
     row.last_touched = now;
     row.expires_at = now;
@@ -198,7 +194,7 @@ fn update_token_err<T: Display>(
 }
 
 fn call_token_service(
-    provider: &AccessTokenProvider,
+    provider: &dyn AccessTokenProvider,
     scopes: &[Scope],
 ) -> AccessTokenProviderResult {
     let mut call =
