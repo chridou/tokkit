@@ -46,7 +46,7 @@
 //!
 //! ## Recent changes
 //! * 0.17.0
-//!    * Futures 0.3 compatability
+//!    * Futures 0.3 compatibility
 //!    * Replaced hyper with reqwest
 //!    * Removed a bunch of obsolete APIs
 //! * 0.15.3
