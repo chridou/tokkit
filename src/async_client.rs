@@ -19,19 +19,19 @@ pub type HttpClient = Client;
 /// See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
 pub trait AsyncTokenInfoService {
     /// Gives a `TokenInfo` for an `AccessToken`.
-    fn introspect(
-        &self,
-        token: &AccessToken,
-    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>;
+    fn introspect<'a>(
+        &'a self,
+        token: &'a AccessToken,
+    ) -> BoxFuture<'a, Result<TokenInfo, TokenInfoError>>;
     /// Gives a `TokenInfo` for an `AccessToken` with retries.
     ///
     /// `budget` defines the duration the retries may take
     /// until the whole call is considered a failure.
-    fn introspect_with_retry(
-        &self,
-        token: &AccessToken,
+    fn introspect_with_retry<'a>(
+        &'a self,
+        token: &'a AccessToken,
         budget: Duration,
-    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>;
+    ) -> BoxFuture<'a, Result<TokenInfo, TokenInfoError>>;
 }
 
 /// Gives a `TokenInfo` for an `AccessToken`.
@@ -42,21 +42,21 @@ pub trait AsyncTokenInfoService {
 /// See [OAuth 2.0 Token Introspection](https://tools.ietf.org/html/rfc7662)
 pub trait AsyncTokenInfoServiceLight {
     /// Gives a `TokenInfo` for an `AccessToken`.
-    fn introspect(
-        &self,
-        token: &AccessToken,
-        http_client: &Client,
-    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>;
+    fn introspect<'a>(
+        &'a self,
+        token: &'a AccessToken,
+        http_client: &'a Client,
+    ) -> BoxFuture<'a, Result<TokenInfo, TokenInfoError>>;
     /// Gives a `TokenInfo` for an `AccessToken` with retries.
     ///
     /// `budget` defines the duration the retries may take
     /// until the whole call is considered a failure.
-    fn introspect_with_retry(
-        &self,
-        token: &AccessToken,
+    fn introspect_with_retry<'a>(
+        &'a self,
+        token: &'a AccessToken,
         budget: Duration,
-        http_client: &Client,
-    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>;
+        http_client: &'a Client,
+    ) -> BoxFuture<'a, Result<TokenInfo, TokenInfoError>>;
 }
 
 /// A complete introspection client that owns a
@@ -78,8 +78,8 @@ pub struct AsyncTokenInfoServiceClient<P, M> {
 
 impl<P, M> AsyncTokenInfoServiceClient<P, M>
 where
-    P: TokenInfoParser + Clone + Send + 'static,
-    M: MetricsCollector + Clone + Send + 'static,
+    P: TokenInfoParser + Send,
+    M: MetricsCollector + Send,
 {
     pub fn new(
         http_client: Client,
@@ -146,36 +146,33 @@ where
 
 impl<P, M> AsyncTokenInfoService for AsyncTokenInfoServiceClient<P, M>
 where
-    P: TokenInfoParser + Clone + Send + Unpin + 'static,
-    M: MetricsCollector + Clone + Send + Unpin + 'static,
+    P: TokenInfoParser + Send + Sync,
+    M: MetricsCollector + Send + Sync,
 {
-    fn introspect(
-        &self,
-        token: &AccessToken,
-    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>> {
+    fn introspect<'a>(
+        &'a self,
+        token: &'a AccessToken,
+    ) -> BoxFuture<'a, Result<TokenInfo, TokenInfoError>> {
         let start = Instant::now();
         self.metrics_collector.incoming_introspection_request();
-        let metrics_collector = self.metrics_collector.clone();
-
-        let result = execute_once(
-            self.http_client.clone(),
-            token.clone(),
-            &self.url_prefix,
-            self.parser.clone(),
-            self.metrics_collector.clone(),
-        );
 
         async move {
-            let result = result.await;
+            let result = execute_once(
+                &self.http_client,
+                token,
+                &self.url_prefix,
+                &self.parser,
+                &self.metrics_collector,
+            ).await;
 
             match result {
                 Ok(_) => {
-                    metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_success(start);
+                    self.metrics_collector.introspection_request(start);
+                    self.metrics_collector.introspection_request_success(start);
                 }
                 Err(_) => {
-                    metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_failure(start);
+                    self.metrics_collector.introspection_request(start);
+                    self.metrics_collector.introspection_request_failure(start);
                 }
             }
 
@@ -184,22 +181,21 @@ where
         .boxed()
     }
 
-    fn introspect_with_retry(
-        &self,
-        token: &AccessToken,
+    fn introspect_with_retry<'a>(
+        &'a self,
+        token: &'a AccessToken,
         budget: Duration,
-    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>> {
+    ) -> BoxFuture<'a, Result<TokenInfo, TokenInfoError>> {
         let start = Instant::now();
         self.metrics_collector.incoming_introspection_request();
 
-        let metrics_collector = self.metrics_collector.clone();
         let result = execute_with_retry(
             &self.http_client,
-            token.clone(),
+            token,
             &self.url_prefix,
-            self.parser.clone(),
+            &self.parser,
             budget,
-            self.metrics_collector.clone(),
+            &self.metrics_collector,
         );
 
         async move {
@@ -207,12 +203,12 @@ where
 
             match result {
                 Ok(_) => {
-                    metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_success(start)
+                    self.metrics_collector.introspection_request(start);
+                    self.metrics_collector.introspection_request_success(start)
                 }
                 Err(_) => {
-                    metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_failure(start)
+                    self.metrics_collector.introspection_request(start);
+                    self.metrics_collector.introspection_request_failure(start)
                 }
             }
 
@@ -239,8 +235,8 @@ pub struct AsyncTokenInfoServiceClientLight<P, M> {
 
 impl<P, M> AsyncTokenInfoServiceClientLight<P, M>
 where
-    P: TokenInfoParser + Clone + Send + 'static,
-    M: MetricsCollector + Clone + Send + 'static,
+    P: TokenInfoParser + Send,
+    M: MetricsCollector + Send,
 {
     pub fn new(
         endpoint: &str,
@@ -288,7 +284,11 @@ where
     pub fn with_client(
         &self,
         http_client: Client,
-    ) -> AsyncTokenInfoServiceClient<P, M> {
+    ) -> AsyncTokenInfoServiceClient<P, M>
+    where
+        P: Clone,
+        M: Clone,
+    {
         AsyncTokenInfoServiceClient::create(
             http_client,
             self.url_prefix.clone(),
@@ -301,6 +301,9 @@ where
     /// Creates an `AsyncTokenInfoService` with a default client using
     /// the given number of threads to do DNS resolving
     pub fn with_default_client(&self) -> InitializationResult<AsyncTokenInfoServiceClient<P, M>>
+    where
+        P: Clone,
+        M: Clone,
     {
         let http_client = default_http_client()?;
 
@@ -317,37 +320,34 @@ pub fn default_http_client() -> Result<HttpClient, InitializationError> {
 
 impl<P, M> AsyncTokenInfoServiceLight for AsyncTokenInfoServiceClientLight<P, M>
 where
-    P: TokenInfoParser + Clone + Send + Unpin + 'static,
-    M: MetricsCollector + Clone + Send + Unpin + 'static,
+    P: TokenInfoParser + Send + Sync,
+    M: MetricsCollector + Send + Sync,
 {
-    fn introspect(
-        &self,
-        token: &AccessToken,
-        http_client: &Client,
-    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>> {
+    fn introspect<'a>(
+        &'a self,
+        token: &'a AccessToken,
+        http_client: &'a Client,
+    ) -> BoxFuture<'a, Result<TokenInfo, TokenInfoError>> {
         let start = Instant::now();
         self.metrics_collector.incoming_introspection_request();
 
-        let metrics_collector = self.metrics_collector.clone();
-        let result = execute_once(
-            http_client.clone(),
-            token.clone(),
-            &self.url_prefix,
-            self.parser.clone(),
-            self.metrics_collector.clone(),
-        );
-
         async move {
-            let result = result.await;
+            let result = execute_once(
+                http_client,
+                token,
+                &self.url_prefix,
+                &self.parser,
+                &self.metrics_collector,
+            ).await;
 
             match result {
                 Ok(_) => {
-                    metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_success(start)
+                    self.metrics_collector.introspection_request(start);
+                    self.metrics_collector.introspection_request_success(start)
                 }
                 Err(_) => {
-                    metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_failure(start)
+                    self.metrics_collector.introspection_request(start);
+                    self.metrics_collector.introspection_request_failure(start)
                 }
             }
 
@@ -356,36 +356,33 @@ where
         .boxed()
     }
 
-    fn introspect_with_retry(
-        &self,
-        token: &AccessToken,
+    fn introspect_with_retry<'a>(
+        &'a self,
+        token: &'a AccessToken,
         budget: Duration,
-        http_client: &Client,
-    ) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>> {
+        http_client: &'a Client,
+    ) -> BoxFuture<'a, Result<TokenInfo, TokenInfoError>> {
         let start = Instant::now();
         self.metrics_collector.incoming_introspection_request();
 
-        let metrics_collector = self.metrics_collector.clone();
-        let result = execute_with_retry(
-            http_client,
-            token.clone(),
-            &self.url_prefix,
-            self.parser.clone(),
-            budget,
-            self.metrics_collector.clone(),
-        );
-
         async move {
-            let result = result.await;
+            let result = execute_with_retry(
+                http_client,
+                token,
+                &self.url_prefix,
+                &self.parser,
+                budget,
+                &self.metrics_collector,
+            ).await;
 
             match result {
                 Ok(_) => {
-                    metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_success(start)
+                    self.metrics_collector.introspection_request(start);
+                    self.metrics_collector.introspection_request_success(start)
                 }
                 Err(_) => {
-                    metrics_collector.introspection_request(start);
-                    metrics_collector.introspection_request_failure(start)
+                    self.metrics_collector.introspection_request(start);
+                    self.metrics_collector.introspection_request_failure(start)
                 }
             }
 
@@ -395,12 +392,12 @@ where
     }
 }
 
-fn process_response<P>(
+fn process_response<'a, P>(
     response: Response,
-    parser: P,
-) -> BoxFuture<'static, Result<TokenInfo, TokenInfoError>>
+    parser: &'a P,
+) -> BoxFuture<'a, Result<TokenInfo, TokenInfoError>>
 where
-    P: TokenInfoParser + Clone + Send + 'static,
+    P: TokenInfoParser + Send + Sync,
 {
     let status = response.status();
 
@@ -440,17 +437,17 @@ where
     .boxed()
 }
 
-fn execute_with_retry<M, P>(
-    http_client: &Client,
-    token: AccessToken,
-    url_prefix: &str,
-    parser: P,
+fn execute_with_retry<'a, M, P>(
+    http_client: &'a Client,
+    token: &'a AccessToken,
+    url_prefix: &'a str,
+    parser: &'a P,
     budget: Duration,
-    metrics_collector: M,
-) -> impl Future<Output = Result<TokenInfo, TokenInfoError>> + Send + 'static
+    metrics_collector: &'a M,
+) -> impl Future<Output = Result<TokenInfo, TokenInfoError>> + Send + 'a
 where
-    P: TokenInfoParser + Clone + Send + Unpin + 'static,
-    M: MetricsCollector + Clone + Send + Unpin + 'static,
+    P: TokenInfoParser + Send + Sync,
+    M: MetricsCollector + Send + Sync,
 {
     if budget == Duration::from_secs(0) {
         return future::err(
@@ -459,9 +456,6 @@ where
     }
 
     let deadline = Instant::now() + budget;
-    let http_client = http_client.clone();
-
-    let url_prefix = url_prefix.to_string();
 
     let mut backoff = backoff::ExponentialBackoff::default();
     backoff.max_elapsed_time = Some(Duration::from_millis(200));
@@ -472,11 +466,11 @@ where
 
     let action = move || {
         let execution_result = execute_once(
-            http_client.clone(),
-            token.clone(),
-            &url_prefix.clone(),
-            parser.clone(),
-            metrics_collector.clone(),
+            http_client,
+            token,
+            url_prefix,
+            parser,
+            metrics_collector,
         );
 
         async move {
@@ -511,16 +505,16 @@ where
     .boxed()
 }
 
-fn execute_once<P, M>(
-    client: Client,
-    token: AccessToken,
+fn execute_once<'a, P, M>(
+    client: &'a Client,
+    token: &'a AccessToken,
     url_prefix: &str,
-    parser: P,
-    metrics_collector: M,
-) -> impl Future<Output = Result<TokenInfo, TokenInfoError>> + Send + 'static
+    parser: &'a P,
+    metrics_collector: &'a M,
+) -> impl Future<Output = Result<TokenInfo, TokenInfoError>> + Send + 'a
 where
-    P: TokenInfoParser + Clone + Send + 'static,
-    M: MetricsCollector + Send + 'static,
+    P: TokenInfoParser + Send + Sync,
+    M: MetricsCollector + Send + Sync,
 {
     let start = Instant::now();
     let uri = complete_url(url_prefix, &token);
