@@ -1,6 +1,6 @@
 [package]
 name = "tokkit"
-version = "0.16.0"
+version = "0.17.0"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 license = "Apache-2.0/MIT"
 description = "A simple(simplistic) OAUTH toolkit."
@@ -10,23 +10,21 @@ readme = "README.md"
 repository = "https://github.com/chridou/tokkit"
 keywords = ["OAUTH2", "token", "token-info", "s2s"]
 categories = ["web-programming"]
+edition = "2018"
 
 [dependencies]
-log = "0.4"
-failure = "0.1"
-json = "0.12"
-reqwest = "0.9"
 backoff = "0.1"
-url = "2.1"
-hyper = { version = "0.12", optional = true}
-tokio-retry = { version = "0.2", optional = true}
-futures = { version = "0.1", optional = true }
-hyper-tls = { version = "0.3", optional = true }
-http = { version = "0.2", optional = true }
+backoff-futures = { version = "0.2", optional = true }
+failure = "0.1"
+futures = { version = "0.3", optional = true }
+json = "0.12"
+log = "0.4"
 metrix = { version = "0.10", optional = true }
+reqwest = { version = "0.10", features = ["blocking"] }
+url = "2.1"
 
 [dev-dependencies]
 env_logger = "0.7"
 
 [features]
-async = ["hyper", "tokio-retry", "futures", "hyper-tls", "http"]
+async = ["futures", "backoff-futures"]

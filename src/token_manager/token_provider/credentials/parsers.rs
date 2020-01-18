@@ -122,9 +122,10 @@ fn parse_credentials(
                 )))
             }
         };
+
         Ok((id, secret))
     } else {
-        return Err(CredentialsError::Parse("Not a JSON object".to_string()));
+        Err(CredentialsError::Parse("Not a JSON object".to_string()))
     }
 }
 

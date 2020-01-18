@@ -20,7 +20,7 @@
 //!
 //! ## Features
 //!
-//! * `async`: Adds a `hyper` based async client.
+//! * `async`: Adds a `reqwest` based async client.
 //! See also `TokenInfoServiceClientBuilder`
 //! * `metrix`: Add support for the [metrix](https://crates.io/crates/metrix)
 //! crate(async client only)
@@ -45,7 +45,10 @@
 //! ```
 //!
 //! ## Recent changes
-//!
+//! * 0.17.0
+//!    * Futures 0.3 compatibility
+//!    * Replaced hyper with reqwest
+//!    * Removed a bunch of obsolete APIs
 //! * 0.15.3
 //!    * Use reqwest 0.9
 //! * 0.15.2
@@ -73,25 +76,8 @@
 #[macro_use]
 extern crate log;
 
-extern crate backoff;
 #[macro_use]
 extern crate failure;
-extern crate json;
-extern crate reqwest;
-extern crate url;
-
-#[cfg(feature = "async")]
-extern crate futures;
-#[cfg(feature = "async")]
-extern crate http;
-#[cfg(feature = "async")]
-extern crate hyper;
-#[cfg(feature = "async")]
-extern crate hyper_tls;
-#[cfg(feature = "metrix")]
-extern crate metrix;
-#[cfg(feature = "async")]
-extern crate tokio_retry;
 
 use std::fmt;
 
@@ -223,7 +209,7 @@ impl TokenInfo {
     /// Use for authorization. Checks whether this `TokenInfo` has the given
     /// `Scope`.
     pub fn has_scope(&self, scope: &Scope) -> bool {
-        self.scope.iter().find(|&s| s == scope).is_some()
+        self.scope.iter().any(|s| s == scope)
     }
 
     /// Use for authorization. Checks whether this `TokenInfo` has all of the

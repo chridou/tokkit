@@ -161,7 +161,7 @@ impl Error for AccessTokenProviderError {
         }
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match *self {
             AccessTokenProviderError::Credentials(ref inner) => Some(inner),
             _ => None,
@@ -169,9 +169,9 @@ impl Error for AccessTokenProviderError {
     }
 }
 
-impl From<AccessTokenProviderError> for ::token_manager::error::TokenError {
-    fn from(what: AccessTokenProviderError) -> ::token_manager::error::TokenError {
-        ::token_manager::error::TokenErrorKind::AccessTokenProvider(format!(
+impl From<AccessTokenProviderError> for crate::token_manager::error::TokenError {
+    fn from(what: AccessTokenProviderError) -> crate::token_manager::error::TokenError {
+        crate::token_manager::error::TokenErrorKind::AccessTokenProvider(format!(
             "Error from Tokenprovider: {}",
             what
         )).into()

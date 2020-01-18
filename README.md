@@ -20,7 +20,7 @@ The documentation is available [online](https://docs.rs/tokkit).
 
 ## Features
 
-* `async`: Adds a `hyper` based async client.
+* `async`: Adds a `reqwest` based async client.
 See also `TokenInfoServiceClientBuilder`
 * `metrix`: Add support for the [metrix](https://crates.io/crates/metrix)
 crate(async client only)

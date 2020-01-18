@@ -10,7 +10,7 @@ pub struct RefreshScheduler<'a, T: 'a> {
     /// The number of ms a cycle should take at max.
     max_cycle_dur_ms: u64,
     is_running: &'a AtomicBool,
-    clock: &'a Clock,
+    clock: &'a dyn Clock,
 }
 
 impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
@@ -20,7 +20,7 @@ impl<'a, T: Eq + Ord + Send + Clone + Display> RefreshScheduler<'a, T> {
         max_cycle_dur_ms: u64,
         min_notification_interval_ms: u64,
         is_running: &'a AtomicBool,
-        clock: &'a Clock,
+        clock: &'a dyn Clock,
     ) -> Self {
         RefreshScheduler {
             rows,
@@ -214,6 +214,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn initial_state_is_correct() {
         let rows = create_token_rows();
         let row = rows[0].lock().unwrap();
@@ -280,6 +281,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::cognitive_complexity)]
     fn scheduler_workflow() {
         let (tx, rx) = mpsc::channel();
         let is_running = AtomicBool::new(true);
